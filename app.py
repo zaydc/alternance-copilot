@@ -94,6 +94,12 @@ def page_offres() -> None:
     with connexion() as c:
         total = stockage.nombre_offres_actives(c, PERIODES[periode])
         lignes = stockage.classement(c, hash_cv, PERIODES[periode])
+        exclues = stockage.offres_exclues(c, PERIODES[periode])
+
+    if exclues:
+        with st.expander(f"🚫 {len(exclues)} offre{'s' if len(exclues) > 1 else ''} d'écoles / CFA masquée{'s' if len(exclues) > 1 else ''}"):
+            for offre in exclues:
+                st.markdown(f"- [{offre['titre']}]({offre['url_candidature']}) · {offre['entreprise'] or '?'} · *{offre['exclusion']}*")
 
     if not lignes:
         if total:
@@ -171,7 +177,7 @@ def page_entreprises() -> None:
                              on_select="rerun", selection_mode="single-row")
     lignes = selection.selection.rows
     if not lignes:
-        st.caption(f"{len(entreprises)} entreprises · clique sur une ligne pour préparer un email")
+        st.caption(f"{len(entreprises)} entreprises (écoles et CFA exclus) · clique sur une ligne pour préparer un email")
         return
 
     entreprise = entreprises[lignes[0]]

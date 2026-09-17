@@ -195,6 +195,22 @@ Interface : Streamlit (local)
   - Défauts relevés : rôle embelli (« développé » au lieu de « tests et débogage »), âge de l'entreprise approximatif
     → consignes d'exactitude ajoutées au prompt
 
+## Étape 9 — Exclusion des écoles et CFA ✅
+
+- Demande : bloquer les offres d'écoles (ISCOD, CFA...) qui recrutent des étudiants pour leurs formations
+- Analyse de 387 offres réelles (30 km) :
+  - Les écoles publient **au nom d'entreprises clientes** : le code NAF est celui du client → filtre par secteur inutile
+  - **`is_delegated = true`** (champ de l'API) = 98 offres, **toutes** d'organismes de formation (AUREIS FORMATION,
+    SCHOLIA, INATEC, E2M FORMATION, IFCV, GOTOLEARN) : signal fiable
+  - « CFA » dans la **description** : 7 cas sur 7 sont de vraies entreprises (Carrefour, Elior...) → non utilisé
+- [x] `collecte.motif_exclusion()` : (1) `is_delegated`, (2) nom d'organisme (CFA, ISCOD, IFCV, école, school,
+  formation, academy...), (3) titre « rejoins / intégrez notre école / formation »
+  - Échantillon : 100 / 387 offres exclues ; pas de faux positif sur Institut Gustave Roussy ni « école 42 » dans un titre
+- [x] Colonne `exclusion` (offres, entreprises) + **migration** `stockage.migrer()` (ALTER TABLE sur les bases existantes)
+- [x] Offres et entreprises exclues : ni notées, ni affichées ; liste des offres masquées consultable sur la page Offres
+- Sur la base réelle : IFCV APPRENTISSAGE masquée ; cas limite côté entreprises : « HN SERVICES - HN FORMATION -
+  HN RECRUTEMENT » (ESN avec une activité de formation) masquée par le mot « formation »
+
 ## Sources
 - https://api.apprentissage.beta.gouv.fr/fr
 - https://code.claude.com/docs/en/authentication

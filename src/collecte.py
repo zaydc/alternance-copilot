@@ -32,6 +32,17 @@ CODES_ROME_OFFRES = ["M1827", "M1821", "M1811", "M1806", "M1802", "M1822"]
 # Pour les entreprises, le code dev seul ramène des ESN / éditeurs (les autres codes ramènent banques et comptables)
 CODES_ROME_ENTREPRISES = ["M1827"]
 
+# Organismes de formation (écoles, CFA) qui publient des offres pour recruter des étudiants dans leurs formations
+NOM_ORGANISME_FORMATION = re.compile(
+    r"\b(cfa|iscod|ifcv|scholia|inatec|aureis|studi|openclassrooms|ipssi|esgi|epsi|gotolearn|pigier"
+    r"|[ée]cole|school|formations?|academy|acad[ée]mie|apprentissage)\b",
+    re.IGNORECASE,
+)
+TITRE_RECRUTEMENT_ETUDIANTS = re.compile(
+    r"\b(rejoins|rejoignez|int[èe]gre|int[ée]grez)\s+(notre|nos)\s+([ée]coles?|formations?|campus|programmes?)\b",
+    re.IGNORECASE,
+)
+
 
 def texte_propre(valeur: str | None) -> str:
     """Convertit un texte HTML de l'API en texte brut lisible."""
@@ -54,6 +65,20 @@ def distance_km(latitude: float, longitude: float) -> float:
     delta_lambda = math.radians(longitude - LONGITUDE_CENTRE)
     a = math.sin(delta_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
     return round(2 * rayon_terre * math.asin(math.sqrt(a)), 1)
+
+
+def motif_exclusion(nom: str | None, titre: str = "", deleguee: bool = False) -> str | None:
+    """Raison d'écarter une offre ou une entreprise d'organisme de formation, None sinon.
+
+    Pas de recherche de « CFA » dans la description : les vraies entreprises le mentionnent aussi.
+    """
+    if deleguee:
+        return "offre gérée par un organisme de formation pour le compte d'une entreprise"
+    if nom and (trouve := NOM_ORGANISME_FORMATION.search(nom)):
+        return f"organisme de formation (« {trouve.group(0)} » dans le nom)"
+    if titre and TITRE_RECRUTEMENT_ETUDIANTS.search(titre):
+        return "recrutement d'étudiants pour une formation"
+    return None
 
 
 def nettoyer_offre(brute: dict) -> dict:
@@ -84,6 +109,8 @@ def nettoyer_offre(brute: dict) -> dict:
         "date_publication": offre["publication"]["creation"],
         "date_expiration": offre["publication"]["expiration"],
         "url_candidature": brute["apply"]["url"],
+        # is_delegated : offre publiée par un tiers (en pratique un organisme de formation) pour une entreprise
+        "exclusion": motif_exclusion(brute["workplace"]["name"], offre["title"], brute.get("is_delegated", False)),
     }
 
 
@@ -105,6 +132,7 @@ def nettoyer_entreprise(brute: dict) -> dict:
         "secteur": naf.get("label", ""),
         "telephone": brute["apply"]["phone"],
         "url_candidature": brute["apply"]["url"],
+        "exclusion": motif_exclusion(brute["workplace"]["name"]),
     }
 
 

@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS offres (
     date_publication       TEXT,
     date_expiration        TEXT,
     url_candidature        TEXT,
+    exclusion              TEXT,  -- raison de masquer l'offre (organisme de formation), NULL sinon
     premiere_vue           TEXT NOT NULL,
     derniere_vue           TEXT NOT NULL
 );
@@ -46,6 +47,7 @@ CREATE TABLE IF NOT EXISTS entreprises (
     secteur         TEXT,
     telephone       TEXT,
     url_candidature TEXT,
+    exclusion       TEXT,
     premiere_vue    TEXT NOT NULL,
     derniere_vue    TEXT NOT NULL
 );
@@ -128,7 +130,21 @@ def connecter(chemin: Path = CHEMIN_BASE) -> sqlite3.Connection:
     connexion.row_factory = sqlite3.Row  # accès aux colonnes par nom : ligne["titre"]
     connexion.execute("PRAGMA foreign_keys = ON")
     connexion.executescript(SCHEMA)
+    migrer(connexion)
     return connexion
+
+
+# Colonnes ajoutées après la création de la base : (table, colonne, type)
+COLONNES_AJOUTEES = [("offres", "exclusion", "TEXT"), ("entreprises", "exclusion", "TEXT")]
+
+
+def migrer(connexion: sqlite3.Connection) -> None:
+    """Ajoute aux bases existantes les colonnes apparues depuis (CREATE TABLE IF NOT EXISTS ne le fait pas)."""
+    for table, colonne, type_sql in COLONNES_AJOUTEES:
+        existantes = {ligne[1] for ligne in connexion.execute(f"PRAGMA table_info({table})")}
+        if colonne not in existantes:
+            connexion.execute(f"ALTER TABLE {table} ADD COLUMN {colonne} {type_sql}")
+    connexion.commit()
 
 
 def enregistrer(connexion: sqlite3.Connection, table: str, elements: list[dict], date_collecte: str) -> int:
@@ -168,6 +184,7 @@ def offres_a_noter(connexion: sqlite3.Connection, profil_hash: str) -> list[sqli
         LEFT JOIN notations n ON n.offre_id = o.id AND n.profil_hash = ?
         WHERE n.offre_id IS NULL
           AND o.derniere_vue = (SELECT MAX(derniere_vue) FROM offres)
+          AND o.exclusion IS NULL
           AND {condition_age}
         ORDER BY o.distance_km
         """,
@@ -196,6 +213,7 @@ def classement(connexion: sqlite3.Connection, profil_hash: str, age_max_jours: i
         SELECT o.titre, o.entreprise, o.adresse, o.distance_km, o.url_candidature, o.date_publication, n.*
         FROM notations n JOIN offres o ON o.id = n.offre_id
         WHERE n.profil_hash = ? AND o.derniere_vue = (SELECT MAX(derniere_vue) FROM offres)
+          AND o.exclusion IS NULL
           AND {condition_age}
         ORDER BY n.score DESC
         """,
@@ -231,9 +249,21 @@ def derniere_collecte(connexion: sqlite3.Connection) -> str | None:
 def nombre_offres_actives(connexion: sqlite3.Connection, age_max_jours: int = AGE_MAX_JOURS) -> int:
     condition_age, age = filtre_age(age_max_jours)
     return connexion.execute(
-        f"SELECT COUNT(*) FROM offres o WHERE o.derniere_vue = (SELECT MAX(derniere_vue) FROM offres) AND {condition_age}",
+        f"""SELECT COUNT(*) FROM offres o
+            WHERE o.derniere_vue = (SELECT MAX(derniere_vue) FROM offres) AND o.exclusion IS NULL AND {condition_age}""",
         (age,),
     ).fetchone()[0]
+
+
+def offres_exclues(connexion: sqlite3.Connection, age_max_jours: int = AGE_MAX_JOURS) -> list[sqlite3.Row]:
+    """Offres récentes masquées (organismes de formation), pour pouvoir vérifier le filtre."""
+    condition_age, age = filtre_age(age_max_jours)
+    return connexion.execute(
+        f"""SELECT o.titre, o.entreprise, o.exclusion, o.url_candidature FROM offres o
+            WHERE o.derniere_vue = (SELECT MAX(derniere_vue) FROM offres) AND o.exclusion IS NOT NULL AND {condition_age}
+            ORDER BY o.entreprise""",
+        (age,),
+    ).fetchall()
 
 
 def lister_entreprises(connexion: sqlite3.Connection, avec_salaries: bool) -> list[sqlite3.Row]:
@@ -243,6 +273,7 @@ def lister_entreprises(connexion: sqlite3.Connection, avec_salaries: bool) -> li
         SELECT e.*, COUNT(m.id) AS nb_emails
         FROM entreprises e LEFT JOIN emails m ON m.entreprise_id = e.id
         WHERE e.derniere_vue = (SELECT MAX(derniere_vue) FROM entreprises)
+          AND e.exclusion IS NULL
           AND (? = 0 OR COALESCE(e.taille, '') NOT IN ('', '0-0'))
         GROUP BY e.id
         ORDER BY e.distance_km
