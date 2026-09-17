@@ -80,8 +80,20 @@ Interface : Streamlit (local)
 - [x] `scripts/test_connexions.py` : Claude répond « OK » ✅, La bonne alternance renvoie des offres ✅
 
 ### Critères de matching (en cours)
-- **Zone** : Vigneux-sur-Seine (91270), rayon **20 km**
-- Autres critères (rythme, stack, taille d'entreprise) : à classer
+- **Zone** : départements **75, 91, 92, 93, 94** (pas au-delà de La Défense) → filtre `departements` + rayon **30 km** autour de Vigneux-sur-Seine (91270)
+  - Test : 20 km = 15 offres ; 30 km = 29 offres (dont doublons) + 150 entreprises
+- **Profil** : BUT Informatique 3e année (niveau 6), développeur full stack + IA/data (LangChain, RAG, ETL)
+- **Rythme** : 1 sem. école / 1 sem. entreprise
+- **Taille d'entreprise** : sans importance (recherche urgente)
+
+### Codes ROME (2026-09-17)
+- L'API utilise le **ROME 4.0** : M1805 (ancien « Études et développement informatique ») ne renvoie plus rien.
+- Scan M1801–M1849, 20 km autour de Vigneux : **~35 offres informatiques seulement** au total.
+  Codes utiles : M1827 (dev fullstack), M1821 (dev logiciel), M1811 (data), M1806 (chef de projet IT),
+  M1802 (support / systèmes), M1822, M1830, M1838, M1846 (cyber / réseaux).
+- Nettoyage nécessaire : **doublons** (même offre renvoyée plusieurs fois) et **entités HTML** dans les titres (`&amp;`).
+- Des offres hors profil passent le filtre ROME (RH, communication) → c'est la notation par Claude qui les écartera.
+- Les `recruiters` (entreprises susceptibles de recruter sans offre publiée) sont une piste pour les candidatures spontanées.
 
 ### Notes API La bonne alternance
 - Base : `https://api.apprentissage.beta.gouv.fr/api`, en-tête `Authorization: Bearer <jeton>`
@@ -92,6 +104,14 @@ Interface : Streamlit (local)
 - Le type de clé (**sandbox** ou **production**) détermine l'environnement : une clé sandbox renvoie des offres de test
 - Clé **production** en place ✅ (la sandbox renvoyait des offres fictives mal localisées)
 - Sans filtre métier, 20 km autour de Vigneux = **450 offres** (plafond atteint) → il faudra filtrer par codes ROME (métiers informatique/data)
+
+## Étape 3 — Data 🚧 (en cours)
+
+- [x] `src/collecte.py` : `nettoyer_offre()` (champs utiles, HTML → texte, distance depuis Vigneux)
+  - Test réel : 29 offres brutes → **18 uniques** (doublons = même `identifier.id`)
+  - Entreprise souvent vide pour France Travail (offres anonymisées)
+- [ ] Appel API avec les filtres (départements, 30 km, codes ROME)
+- [ ] Stockage SQLite (dédup sur `id`) + entreprises (`recruiters`)
 
 ## Sources
 - https://api.apprentissage.beta.gouv.fr/fr
