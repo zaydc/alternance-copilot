@@ -6,7 +6,7 @@ Lancement : double-cliquer sur « Alternance Copilot.bat », ou depuis la racine
 
 import json
 from contextlib import closing
-from datetime import datetime
+from datetime import datetime, timezone
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -33,6 +33,14 @@ def date_lisible(iso: str | None) -> str:
     return datetime.fromisoformat(iso).astimezone().strftime("%d/%m/%Y à %H:%M") if iso else "jamais"
 
 
+def anciennete(iso: str) -> str:
+    jours = (datetime.now(timezone.utc) - datetime.fromisoformat(iso.replace("Z", "+00:00"))).days
+    return "🆕 publiée aujourd'hui" if jours == 0 else "🆕 publiée hier" if jours == 1 else f"publiée il y a {jours} jours"
+
+
+PERIODES = {"3 jours": 3, "1 semaine": 7, "2 semaines": stockage.AGE_MAX_JOURS}
+
+
 def couleur_score(score: int) -> str:
     return "green" if score >= 60 else "orange" if score >= 40 else "red"
 
@@ -53,7 +61,7 @@ def barre_laterale() -> None:
                 except Exception as erreur:
                     st.error(f"Échec de la collecte : {erreur}")
 
-        if st.button("⭐ Noter les nouvelles offres", width="stretch", help="Utilise le quota Claude (≈ 1 min 30 par lot de 10)"):
+        if st.button("⭐ Noter les nouvelles offres", width="stretch", help=f"Offres publiées depuis {stockage.AGE_MAX_JOURS} jours max · utilise le quota Claude (≈ 1 min 30 par lot de 10)"):
             if not profil_en_cache():
                 st.error("Importe d'abord ton CV (page Profil).")
             else:
@@ -76,25 +84,32 @@ def page_offres() -> None:
         return
     _, hash_cv = en_cache
 
+    filtres = st.columns([2, 3])
+    periode = filtres[0].segmented_control("Publiées depuis", list(PERIODES), default="2 semaines") or "2 semaines"
+    score_min = filtres[1].slider("Score minimum", 0, 100, 0, step=5)
+
     with connexion() as c:
-        total = stockage.nombre_offres_actives(c)
-        lignes = stockage.classement(c, hash_cv)
+        total = stockage.nombre_offres_actives(c, PERIODES[periode])
+        lignes = stockage.classement(c, hash_cv, PERIODES[periode])
 
     if not lignes:
-        st.info(f"{total} offres collectées, aucune notée pour l'instant : clique sur **⭐ Noter les nouvelles offres**.")
+        if total:
+            st.info(f"{total} offres publiées depuis {periode}, aucune notée : clique sur **⭐ Noter les nouvelles offres**.")
+        else:
+            st.info(f"Aucune offre publiée depuis {periode} : élargis la période ou relance une collecte.")
         return
 
     col1, col2, col3 = st.columns(3)
-    col1.metric("Offres actives", total)
+    col1.metric(f"Offres depuis {periode}", total)
     col2.metric("Offres notées", len(lignes))
     col3.metric("Meilleur score", f"{lignes[0]['score']} / 100")
 
-    score_min = st.slider("Score minimum", 0, 100, 0, step=5)
     for ligne in (l for l in lignes if l["score"] >= score_min):
         with st.container(border=True):
             gauche, droite = st.columns([5, 1])
             gauche.markdown(f"#### {ligne['titre']}")
-            gauche.caption(f"{ligne['entreprise'] or 'Entreprise non communiquée'} · {ligne['adresse']} · {ligne['distance_km']} km")
+            gauche.caption(f"{ligne['entreprise'] or 'Entreprise non communiquée'} · {ligne['adresse']} · "
+                           f"{ligne['distance_km']} km · {anciennete(ligne['date_publication'])}")
             droite.markdown(f"## :{couleur_score(ligne['score'])}[{ligne['score']}]")
 
             st.write(ligne["justification"])

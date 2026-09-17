@@ -166,6 +166,10 @@ Interface : Streamlit (local)
   - Barre latérale : « Collecter les offres » (API, sans quota) et « Noter les nouvelles offres » (quota Claude)
 - [x] Lanceur double-clic `Alternance Copilot.bat` ; `.streamlit/config.toml` (localhost uniquement, pas de statistiques d'usage)
 - [x] Tests sans navigateur avec `streamlit.testing.v1.AppTest` : 3 pages sans exception
+- [x] **Filtre d'ancienneté** : offres publiées depuis **14 jours maximum** (`stockage.AGE_MAX_JOURS`)
+  - Page Offres : choix « 3 jours / 1 semaine / 2 semaines » + « publiée il y a N jours » sur chaque offre
+  - La notation ignore aussi les offres plus anciennes (économie de quota)
+  - Au 17/09 : 6 offres sur 18 ; la meilleure (Buun, fullstack, 60) est exclue (publiée il y a 15 jours)
 - [ ] Tester la génération d'email depuis l'interface (après le reset du quota)
 - Constats :
   - **Smart App Control** (Windows) a bloqué une fois une DLL de pandas au premier chargement, puis l'a autorisée

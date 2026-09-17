@@ -75,6 +75,9 @@ CREATE TABLE IF NOT EXISTS emails (
 );
 """
 
+# Ancienneté maximale d'une offre (date de publication) : au-delà, elle n'est ni notée ni affichée
+AGE_MAX_JOURS = 14
+
 COLONNES_JSON = {"codes_rome", "types_contrat", "points_forts", "points_vigilance", "sources"}
 
 
@@ -115,17 +118,24 @@ def enregistrer(connexion: sqlite3.Connection, table: str, elements: list[dict],
     return nouveaux.fetchone()[0]
 
 
+def filtre_age(age_max_jours: int) -> tuple[str, str]:
+    """Condition SQL « publiée depuis au plus N jours » (julianday comprend le format ISO de l'API) et son paramètre."""
+    return "julianday(o.date_publication) >= julianday('now', ?)", f"-{min(age_max_jours, AGE_MAX_JOURS)} days"
+
+
 def offres_a_noter(connexion: sqlite3.Connection, profil_hash: str) -> list[sqlite3.Row]:
-    """Offres vues lors de la dernière collecte et pas encore notées pour ce profil (cache)."""
+    """Offres récentes de la dernière collecte, pas encore notées pour ce profil (cache)."""
+    condition_age, age = filtre_age(AGE_MAX_JOURS)
     return connexion.execute(
-        """
+        f"""
         SELECT o.* FROM offres o
         LEFT JOIN notations n ON n.offre_id = o.id AND n.profil_hash = ?
         WHERE n.offre_id IS NULL
           AND o.derniere_vue = (SELECT MAX(derniere_vue) FROM offres)
+          AND {condition_age}
         ORDER BY o.distance_km
         """,
-        (profil_hash,),
+        (profil_hash, age),
     ).fetchall()
 
 
@@ -142,16 +152,18 @@ def enregistrer_notations(connexion: sqlite3.Connection, notations: list[dict]) 
         connexion.executemany(requete, lignes)
 
 
-def classement(connexion: sqlite3.Connection, profil_hash: str) -> list[sqlite3.Row]:
-    """Offres actives (dernière collecte) notées pour ce profil, de la meilleure à la moins bonne."""
+def classement(connexion: sqlite3.Connection, profil_hash: str, age_max_jours: int = AGE_MAX_JOURS) -> list[sqlite3.Row]:
+    """Offres actives et récentes notées pour ce profil, de la meilleure à la moins bonne."""
+    condition_age, age = filtre_age(age_max_jours)
     return connexion.execute(
-        """
-        SELECT o.titre, o.entreprise, o.adresse, o.distance_km, o.url_candidature, n.*
+        f"""
+        SELECT o.titre, o.entreprise, o.adresse, o.distance_km, o.url_candidature, o.date_publication, n.*
         FROM notations n JOIN offres o ON o.id = n.offre_id
         WHERE n.profil_hash = ? AND o.derniere_vue = (SELECT MAX(derniere_vue) FROM offres)
+          AND {condition_age}
         ORDER BY n.score DESC
         """,
-        (profil_hash,),
+        (profil_hash, age),
     ).fetchall()
 
 
@@ -174,9 +186,11 @@ def derniere_collecte(connexion: sqlite3.Connection) -> str | None:
     return connexion.execute("SELECT MAX(derniere_vue) FROM offres").fetchone()[0]
 
 
-def nombre_offres_actives(connexion: sqlite3.Connection) -> int:
+def nombre_offres_actives(connexion: sqlite3.Connection, age_max_jours: int = AGE_MAX_JOURS) -> int:
+    condition_age, age = filtre_age(age_max_jours)
     return connexion.execute(
-        "SELECT COUNT(*) FROM offres WHERE derniere_vue = (SELECT MAX(derniere_vue) FROM offres)"
+        f"SELECT COUNT(*) FROM offres o WHERE o.derniere_vue = (SELECT MAX(derniere_vue) FROM offres) AND {condition_age}",
+        (age,),
     ).fetchone()[0]
 
 
