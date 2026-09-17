@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 import streamlit as st
 from dotenv import load_dotenv
 
-from src import candidature, collecte, notation, stockage
+from src import candidature, collecte, contacts, notation, relance, stockage
 from src.llm_client import ErreurLLM
 from src.profil import CHEMIN_CV, charger_profil, profil_en_cache
 
@@ -51,6 +51,9 @@ def barre_laterale() -> None:
     with st.sidebar:
         with connexion() as c:
             st.caption(f"Dernière collecte : {date_lisible(stockage.derniere_collecte(c))}")
+            nb_relances = len(stockage.candidatures_a_relancer(c))
+        if nb_relances:
+            st.warning(f"🔔 {nb_relances} relance{'s' if nb_relances > 1 else ''} à faire (page Suivi)")
 
         if st.button("🔄 Collecter les offres", width="stretch", help="API La bonne alternance (sans quota Claude)"):
             with st.spinner("Interrogation de l'API..."):
@@ -122,7 +125,19 @@ def page_offres() -> None:
                 forts, vigilance = st.columns(2)
                 forts.markdown("**✅ Points forts**\n" + "".join(f"\n- {p}" for p in json.loads(ligne["points_forts"])))
                 vigilance.markdown("**⚠️ Points de vigilance**\n" + "".join(f"\n- {p}" for p in json.loads(ligne["points_vigilance"])))
-            st.link_button("Voir l'offre et postuler ↗", ligne["url_candidature"])
+            boutons = st.columns([1, 1, 3])
+            boutons[0].link_button("Voir l'offre et postuler ↗", ligne["url_candidature"])
+            with connexion() as c:
+                deja = stockage.candidatures(c, offre_id=ligne["offre_id"])
+            if deja:
+                boutons[2].success(f"📬 Postulé le {date_lisible(deja[0]['date_envoi'])} · {deja[0]['statut']}")
+            elif boutons[1].button("📤 J'ai postulé", key=f"postule-{ligne['offre_id']}"):
+                with connexion() as c:
+                    stockage.enregistrer_candidature(c, {
+                        "offre_id": ligne["offre_id"], "nom": f"{ligne['titre']} ({ligne['entreprise'] or 'offre'})",
+                        "destinataire": "plateforme de l'offre", "canal": "offre",
+                    })
+                st.rerun()
 
 
 # ---------------------------------------------------------------- Page : entreprises (candidatures spontanées)
@@ -173,10 +188,14 @@ def page_entreprises() -> None:
 
         with connexion() as c:
             precedents = stockage.emails_entreprise(c, entreprise["id"])
+            envoyees = stockage.candidatures(c, entreprise_id=entreprise["id"])
+        for envoyee in envoyees:
+            st.success(f"📬 Candidature envoyée le {date_lisible(envoyee['date_envoi'])} "
+                       f"({envoyee['canal']} : {envoyee['destinataire']}) · statut : **{envoyee['statut']}**")
 
-        libelle = "🔁 Générer un nouvel email" if precedents else "✨ Générer l'email"
-        if st.button(libelle, type="primary", help="Recherche web + rédaction par Claude (≈ 1 min, utilise le quota)"):
-            with st.spinner("Claude se renseigne sur l'entreprise puis rédige l'email..."):
+        libelle = "🔁 Relancer la recherche et la rédaction" if precedents else "✨ Trouver les contacts et rédiger"
+        if st.button(libelle, type="primary", help="Recherche web + rédaction par Claude (≈ 1 à 2 min, utilise le quota)"):
+            with st.spinner("Claude se renseigne sur l'entreprise, relève ses contacts publiés et rédige..."):
                 try:
                     with connexion() as c:
                         candidature.rediger_email(c, entreprise)
@@ -184,17 +203,185 @@ def page_entreprises() -> None:
                 except ErreurLLM as erreur:
                     st.error(str(erreur))
 
-        if precedents:
-            email = precedents[0]
-            if not email["personnalise"]:
-                st.warning("Aucune information fiable trouvée sur cette entreprise : email générique, à personnaliser.")
-            st.markdown(f"**Ce que fait l'entreprise :** {email['ce_que_fait']}")
-            with st.expander(f"Sources ({len(json.loads(email['sources']))})"):
-                for url in json.loads(email["sources"]):
-                    st.markdown(f"- {url}")
-            afficher_email(email["objet"], email["corps"], cle=f"email-{email['id']}")
-            st.caption(f"Généré le {date_lisible(email['date'])}"
-                       + (f" · {len(precedents)} versions" if len(precedents) > 1 else ""))
+        email = precedents[0] if precedents else None
+        onglet_contacts, onglet_email, onglet_linkedin = st.tabs(["👥 Qui contacter", "✉️ Email", "💼 LinkedIn"])
+        with onglet_contacts:
+            afficher_contacts(entreprise, email)
+        with onglet_email:
+            if not email:
+                st.info("Clique sur **✨ Trouver les contacts et rédiger**.")
+            else:
+                if not email["personnalise"]:
+                    st.warning("Aucune information fiable trouvée sur cette entreprise : email générique, à personnaliser.")
+                st.markdown(f"**Ce que fait l'entreprise :** {email['ce_que_fait']}")
+                with st.expander(f"Sources ({len(json.loads(email['sources']))})"):
+                    for url in json.loads(email["sources"]):
+                        st.markdown(f"- {url}")
+                afficher_email(email["objet"], email["corps"], cle=f"email-{email['id']}")
+                st.caption(f"Généré le {date_lisible(email['date'])}"
+                           + (f" · {len(precedents)} versions" if len(precedents) > 1 else ""))
+                adresses = [p["adresse"] for p in json.loads(email["emails_publics"]) if p["verifiee"] is not False]
+                marquer_envoye(entreprise, email, "email", adresses)
+        with onglet_linkedin:
+            afficher_linkedin(entreprise, email)
+
+
+@st.cache_data(ttl=24 * 3600, show_spinner=False)
+def dirigeants_en_cache(siret: str | None) -> list[dict]:
+    try:
+        return contacts.dirigeants(siret)
+    except Exception:
+        return []
+
+
+def afficher_contacts(entreprise, email) -> None:
+    personnes = dirigeants_en_cache(entreprise["siret"])
+    st.markdown("**Dirigeants** · registre national des entreprises")
+    if personnes:
+        for personne in personnes:
+            st.markdown(f"- {personne['prenoms']} {personne['nom']} — {personne['qualite'] or 'dirigeant'}")
+        st.caption("Dans une PME, le dirigeant décide souvent lui-même de recruter un alternant.")
+    else:
+        st.caption("Aucun dirigeant personne physique trouvé.")
+
+    st.markdown("**Contacts publiés par l'entreprise** · trouvés par Claude, vérifiés sur la page source")
+    if not email:
+        st.caption("Clique sur **✨ Trouver les contacts et rédiger**.")
+        return
+    if email["site_web"]:
+        st.markdown(f"- 🌐 Site : {email['site_web']}")
+    if email["page_carrieres"]:
+        st.markdown(f"- 📄 Carrières / contact : {email['page_carrieres']}")
+    publies = json.loads(email["emails_publics"])
+    for publie in publies:
+        etat = {True: "✅ vérifiée sur la page", False: "⚠️ absente de la page : ne pas utiliser", None: "❔ page inaccessible : à vérifier"}[publie["verifiee"]]
+        st.markdown(f"- ✉️ `{publie['adresse']}` ({publie['usage']}) · {etat} · [source]({publie['source']})")
+    if not publies:
+        st.caption("Aucune adresse publiée : passe par le formulaire du site ou par LinkedIn.")
+
+
+def afficher_linkedin(entreprise, email) -> None:
+    st.caption("Ouvre une recherche, choisis la personne, puis envoie une invitation avec la note ci-dessous.")
+    liens = contacts.liens_linkedin(entreprise["nom"], dirigeants_en_cache(entreprise["siret"]))
+    colonnes = st.columns(2)
+    for i, (libelle, url) in enumerate(liens):
+        colonnes[i % 2].link_button(f"🔎 {libelle}", url, width="stretch")
+    if email and email["note_linkedin"]:
+        st.markdown("**Note d'invitation**")
+        st.code(email["note_linkedin"], language=None, wrap_lines=True)
+        st.caption(f"{len(email['note_linkedin'])} / 300 caractères")
+        marquer_envoye(entreprise, email, "linkedin", [])
+
+
+def marquer_envoye(entreprise, email, canal: str, suggestions: list[str]) -> None:
+    """Enregistre l'envoi dans le suivi : c'est ce qui déclenche les rappels de relance."""
+    with st.form(f"envoi-{canal}-{email['id']}", border=False):
+        etiquette = "Adresse du destinataire" if canal == "email" else "Personne contactée sur LinkedIn"
+        destinataire = st.selectbox(etiquette, suggestions, index=None, accept_new_options=True,
+                                    placeholder="Choisis ou saisis")
+        if st.form_submit_button(f"📤 Marquer comme envoyé ({canal})"):
+            if not destinataire:
+                st.error("Indique le destinataire.")
+                return
+            with connexion() as c:
+                stockage.enregistrer_candidature(c, {
+                    "entreprise_id": entreprise["id"], "email_id": email["id"], "nom": entreprise["nom"],
+                    "destinataire": destinataire, "canal": canal,
+                })
+            st.toast(f"Candidature enregistrée : relance proposée dans {stockage.DELAI_RELANCE_JOURS} jours")
+            st.rerun()
+
+
+# ---------------------------------------------------------------- Page : suivi et relances
+
+STATUTS = ["envoyée", "relancée", "entretien", "refus", "sans suite"]
+
+
+def afficher_relance(cand) -> None:
+    with st.container(border=True):
+        st.markdown(f"**{cand['nom']}** · {cand['canal']} : {cand['destinataire']}")
+        st.caption(f"Envoyée le {date_lisible(cand['date_envoi'])} · sans réponse depuis {cand['jours_sans_reponse']} jours · "
+                   f"relance {cand['nb_relances'] + 1} sur {stockage.MAX_RELANCES}")
+        with connexion() as c:
+            brouillon = stockage.relance_en_attente(c, cand["id"])
+
+        if brouillon is None:
+            gauche, droite = st.columns(2)
+            if gauche.button("✍️ Rédiger la relance", key=f"rediger-{cand['id']}", type="primary"):
+                with st.spinner("Claude rédige la relance..."):
+                    try:
+                        with connexion() as c:
+                            relance.rediger_relance(c, cand)
+                        st.rerun()
+                    except ErreurLLM as erreur:
+                        st.error(str(erreur))
+        else:
+            texte = st.text_area("Relance (modifiable)", f"{brouillon['corps']}\n\n{candidature.lire_signature()}",
+                                 height=220, key=f"relance-{brouillon['id']}")
+            st.code(f"Objet : {brouillon['objet']}\n\n{texte}", language=None, wrap_lines=True)
+            gauche, droite = st.columns(2)
+            if gauche.button("✅ Relance envoyée", key=f"envoyee-{brouillon['id']}", type="primary"):
+                with connexion() as c:
+                    stockage.marquer_relance_envoyee(c, brouillon["id"], cand["id"])
+                st.rerun()
+            if droite.button("🔁 Réécrire", key=f"reecrire-{brouillon['id']}"):
+                with st.spinner("Claude réécrit la relance..."):
+                    try:
+                        with connexion() as c:
+                            relance.rediger_relance(c, cand)
+                        st.rerun()
+                    except ErreurLLM as erreur:
+                        st.error(str(erreur))
+        if droite.button("💬 Ils ont répondu", key=f"repondu-{cand['id']}",
+                         help="Passe la candidature en « entretien » : plus de relance"):
+            with connexion() as c:
+                stockage.changer_statut(c, cand["id"], "entretien")
+            st.rerun()
+
+
+def page_suivi() -> None:
+    st.title("📬 Suivi des candidatures")
+    with connexion() as c:
+        toutes = stockage.candidatures(c)
+        a_relancer = stockage.candidatures_a_relancer(c)
+
+    if not toutes:
+        st.info("Aucune candidature enregistrée. Utilise **📤 Marquer comme envoyé** (Candidatures spontanées) "
+                "ou **📤 J'ai postulé** (Offres) : les relances seront proposées automatiquement.")
+        return
+
+    colonnes = st.columns(4)
+    colonnes[0].metric("Candidatures", len(toutes))
+    colonnes[1].metric("En attente de réponse", sum(c["statut"] in stockage.STATUTS_EN_COURS for c in toutes))
+    colonnes[2].metric("Entretiens", sum(c["statut"] == "entretien" for c in toutes))
+    colonnes[3].metric("À relancer", len(a_relancer))
+
+    st.subheader(f"🔔 À relancer aujourd'hui ({len(a_relancer)})")
+    st.caption(f"Relance proposée {stockage.DELAI_RELANCE_JOURS} jours après l'envoi, "
+               f"{stockage.MAX_RELANCES} fois au maximum, tant que le statut est « envoyée » ou « relancée ».")
+    if a_relancer:
+        for cand in a_relancer:
+            afficher_relance(cand)
+    else:
+        st.success("Rien à relancer aujourd'hui.")
+
+    st.subheader("Toutes les candidatures")
+    tableau = [
+        {"Candidature": c["nom"], "Canal": c["canal"], "Destinataire": c["destinataire"],
+         "Envoyée le": date_lisible(c["date_envoi"]), "Relances": c["nb_relances"], "Statut": c["statut"]}
+        for c in toutes
+    ]
+    st.data_editor(
+        tableau, key="suivi", hide_index=True, width="stretch",
+        disabled=["Candidature", "Canal", "Destinataire", "Envoyée le", "Relances"],
+        column_config={"Statut": st.column_config.SelectboxColumn("Statut", options=STATUTS, required=True)},
+    )
+    # Changements de statut faits dans le tableau : { index de ligne : { colonne : nouvelle valeur } }
+    modifications = st.session_state.get("suivi", {}).get("edited_rows", {})
+    with connexion() as c:
+        for index, changement in modifications.items():
+            if "Statut" in changement and toutes[int(index)]["statut"] != changement["Statut"]:
+                stockage.changer_statut(c, toutes[int(index)]["id"], changement["Statut"])
 
 
 # ---------------------------------------------------------------- Page : profil
@@ -260,5 +447,6 @@ barre_laterale()
 st.navigation([
     st.Page(page_offres, title="Offres", icon="🏆", default=True),
     st.Page(page_entreprises, title="Candidatures spontanées", icon="🏢"),
+    st.Page(page_suivi, title="Suivi et relances", icon="📬"),
     st.Page(page_profil, title="Profil", icon="👤"),
 ]).run()

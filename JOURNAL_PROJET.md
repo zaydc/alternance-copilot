@@ -175,6 +175,26 @@ Interface : Streamlit (local)
   - **Smart App Control** (Windows) a bloqué une fois une DLL de pandas au premier chargement, puis l'a autorisée
   - Des comités sociaux et économiques (secteur « syndicats de salariés ») figurent parmi les entreprises → à filtrer
 
+## Étape 8 — Contacts, suivi et relances ✅
+
+- Demande : relance automatique + « scraper LinkedIn pour trouver des salariés et leur email »
+- **Scraper LinkedIn refusé** : interdit par les conditions de LinkedIn (risque de bannissement du compte) et
+  sanctionné par la CNIL (KASPR, 240 000 €, 5 décembre 2024). Remplacé par des sources légitimes :
+  - [x] `src/contacts.py` : dirigeants via l'API officielle Recherche d'entreprises (sans date de naissance ni nationalité)
+  - [x] Emails **publiés** par l'entreprise, trouvés par Claude puis **vérifiés** par le programme sur la page source
+    (`adresse_dans_texte` : gère « [at] », « (arobase) », refuse `x@site.fr.autre.com` ; 9 cas testés)
+  - [x] Liens de recherche LinkedIn préremplis (ouverts par l'utilisateur) + note d'invitation ≤ 300 caractères
+- [x] Une seule recherche web par entreprise : contacts + email + note LinkedIn (économie de quota)
+- **Relances semi-automatiques** (envoi validé par l'utilisateur) :
+  - [x] Tables `candidatures` et `relances` ; relance proposée à J+7, 2 relances max, arrêt si statut entretien/refus
+  - [x] `src/relance.py` : rédaction par Claude (sans outil) à partir du message initial
+  - [x] Page « Suivi et relances » + rappel dans la barre latérale ; « J'ai postulé » sur les offres ;
+    « Marquer comme envoyé » (email / LinkedIn) sur les entreprises
+- [x] `ALTERNANCE_DB` : base alternative pour les tests et la démo ; tests AppTest sur une copie de la base
+- Test réel CALIXYS (1 min 20) : `contact@calixys.com` vérifiée ✅, email personnalisé (XREC, Qonto, Spendesk)
+  - Défauts relevés : rôle embelli (« développé » au lieu de « tests et débogage »), âge de l'entreprise approximatif
+    → consignes d'exactitude ajoutées au prompt
+
 ## Sources
 - https://api.apprentissage.beta.gouv.fr/fr
 - https://code.claude.com/docs/en/authentication

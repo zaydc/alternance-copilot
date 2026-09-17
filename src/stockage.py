@@ -1,11 +1,13 @@
 """Stockage local SQLite : offres, entreprises et cache des notations de Claude."""
 
 import json
+import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-CHEMIN_BASE = Path(__file__).resolve().parent.parent / "data" / "alternance.db"
+# ALTERNANCE_DB permet d'utiliser une autre base (tests, démo) sans toucher aux vraies données
+CHEMIN_BASE = Path(os.environ.get("ALTERNANCE_DB") or Path(__file__).resolve().parent.parent / "data" / "alternance.db")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS offres (
@@ -68,17 +70,51 @@ CREATE TABLE IF NOT EXISTS emails (
     entreprise_id   TEXT NOT NULL REFERENCES entreprises(id),
     objet           TEXT NOT NULL,
     corps           TEXT NOT NULL,
+    note_linkedin   TEXT,  -- note d'invitation LinkedIn (300 caractères max)
     ce_que_fait     TEXT,  -- résumé de l'activité trouvé sur le web
     personnalise    INTEGER NOT NULL,  -- 0 si aucune information fiable trouvée
+    site_web        TEXT,
+    page_carrieres  TEXT,
+    emails_publics  TEXT,  -- liste JSON : adresses publiées par l'entreprise, avec leur source
     sources         TEXT,  -- liste JSON d'URL
     date            TEXT NOT NULL
+);
+
+-- Suivi : une ligne par candidature envoyée (spontanée ou sur offre)
+CREATE TABLE IF NOT EXISTS candidatures (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    entreprise_id   TEXT REFERENCES entreprises(id),
+    offre_id        TEXT REFERENCES offres(id),
+    email_id        INTEGER REFERENCES emails(id),
+    nom             TEXT NOT NULL,  -- entreprise ou intitulé de l'offre
+    destinataire    TEXT,           -- adresse, nom du contact LinkedIn...
+    canal           TEXT NOT NULL,  -- email, linkedin, formulaire, offre
+    statut          TEXT NOT NULL DEFAULT 'envoyée',  -- envoyée, relancée, entretien, refus, sans suite
+    nb_relances     INTEGER NOT NULL DEFAULT 0,
+    date_envoi      TEXT NOT NULL,
+    derniere_action TEXT NOT NULL,  -- date du dernier envoi (candidature ou relance)
+    notes           TEXT
+);
+
+CREATE TABLE IF NOT EXISTS relances (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    candidature_id  INTEGER NOT NULL REFERENCES candidatures(id),
+    objet           TEXT NOT NULL,
+    corps           TEXT NOT NULL,
+    date_redaction  TEXT NOT NULL,
+    date_envoi      TEXT  -- NULL tant que la relance n'est pas envoyée
 );
 """
 
 # Ancienneté maximale d'une offre (date de publication) : au-delà, elle n'est ni notée ni affichée
 AGE_MAX_JOURS = 14
 
-COLONNES_JSON = {"codes_rome", "types_contrat", "points_forts", "points_vigilance", "sources"}
+COLONNES_JSON = {"codes_rome", "types_contrat", "points_forts", "points_vigilance", "sources", "emails_publics"}
+
+# Relances : première à J+7 après l'envoi, seconde à J+7 après la première, puis on arrête
+DELAI_RELANCE_JOURS = 7
+MAX_RELANCES = 2
+STATUTS_EN_COURS = ("envoyée", "relancée")
 
 
 def maintenant() -> str:
@@ -173,13 +209,19 @@ def chercher_entreprises(connexion: sqlite3.Connection, nom: str) -> list[sqlite
     ).fetchall()
 
 
-def enregistrer_email(connexion: sqlite3.Connection, email: dict) -> None:
-    colonnes = list(email)
-    valeurs = [json.dumps(v, ensure_ascii=False) if c in COLONNES_JSON else v for c, v in email.items()]
+def inserer(connexion: sqlite3.Connection, table: str, ligne: dict) -> int:
+    """Insère une ligne (listes converties en JSON) et renvoie son id."""
+    colonnes = list(ligne)
+    valeurs = [json.dumps(v, ensure_ascii=False) if c in COLONNES_JSON else v for c, v in ligne.items()]
     with connexion:
-        connexion.execute(
-            f"INSERT INTO emails ({', '.join(colonnes)}) VALUES ({', '.join('?' for _ in colonnes)})", valeurs
+        curseur = connexion.execute(
+            f"INSERT INTO {table} ({', '.join(colonnes)}) VALUES ({', '.join('?' for _ in colonnes)})", valeurs
         )
+    return curseur.lastrowid
+
+
+def enregistrer_email(connexion: sqlite3.Connection, email: dict) -> int:
+    return inserer(connexion, "emails", email)
 
 
 def derniere_collecte(connexion: sqlite3.Connection) -> str | None:
@@ -213,3 +255,66 @@ def emails_entreprise(connexion: sqlite3.Connection, entreprise_id: str) -> list
     return connexion.execute(
         "SELECT * FROM emails WHERE entreprise_id = ? ORDER BY date DESC", (entreprise_id,)
     ).fetchall()
+
+
+# ---------------------------------------------------------------- Suivi des candidatures et relances
+
+def enregistrer_candidature(connexion: sqlite3.Connection, candidature: dict) -> int:
+    date = maintenant()
+    return inserer(connexion, "candidatures", {**candidature, "date_envoi": date, "derniere_action": date})
+
+
+def candidatures(connexion: sqlite3.Connection, entreprise_id: str | None = None, offre_id: str | None = None) -> list[sqlite3.Row]:
+    """Toutes les candidatures (les plus récentes d'abord), éventuellement pour une entreprise ou une offre."""
+    return connexion.execute(
+        """
+        SELECT * FROM candidatures
+        WHERE (? IS NULL OR entreprise_id = ?) AND (? IS NULL OR offre_id = ?)
+        ORDER BY date_envoi DESC
+        """,
+        (entreprise_id, entreprise_id, offre_id, offre_id),
+    ).fetchall()
+
+
+def candidatures_a_relancer(connexion: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Candidatures sans réponse dont la dernière action date d'au moins DELAI_RELANCE_JOURS jours."""
+    return connexion.execute(
+        f"""
+        SELECT c.*, CAST(julianday('now') - julianday(c.derniere_action) AS INTEGER) AS jours_sans_reponse
+        FROM candidatures c
+        WHERE c.statut IN ({', '.join('?' for _ in STATUTS_EN_COURS)})
+          AND c.nb_relances < ?
+          AND julianday('now') - julianday(c.derniere_action) >= ?
+        ORDER BY c.derniere_action
+        """,
+        (*STATUTS_EN_COURS, MAX_RELANCES, DELAI_RELANCE_JOURS),
+    ).fetchall()
+
+
+def changer_statut(connexion: sqlite3.Connection, candidature_id: int, statut: str) -> None:
+    with connexion:
+        connexion.execute("UPDATE candidatures SET statut = ? WHERE id = ?", (statut, candidature_id))
+
+
+def relance_en_attente(connexion: sqlite3.Connection, candidature_id: int) -> sqlite3.Row | None:
+    """Dernière relance rédigée mais pas encore envoyée pour cette candidature."""
+    return connexion.execute(
+        "SELECT * FROM relances WHERE candidature_id = ? AND date_envoi IS NULL ORDER BY id DESC LIMIT 1",
+        (candidature_id,),
+    ).fetchone()
+
+
+def marquer_relance_envoyee(connexion: sqlite3.Connection, relance_id: int, candidature_id: int) -> None:
+    date = maintenant()
+    with connexion:  # les deux mises à jour ensemble, ou aucune
+        connexion.execute("UPDATE relances SET date_envoi = ? WHERE id = ?", (date, relance_id))
+        connexion.execute(
+            "UPDATE candidatures SET nb_relances = nb_relances + 1, statut = 'relancée', derniere_action = ? WHERE id = ?",
+            (date, candidature_id),
+        )
+
+
+def email_par_id(connexion: sqlite3.Connection, email_id: int | None) -> sqlite3.Row | None:
+    if email_id is None:
+        return None
+    return connexion.execute("SELECT * FROM emails WHERE id = ?", (email_id,)).fetchone()
