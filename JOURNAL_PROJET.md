@@ -117,7 +117,7 @@ Interface : Streamlit (local)
   - Upsert sur `id` ; `premiere_vue` / `derniere_vue` pour repérer les nouvelles offres et celles disparues
   - Collecte : `.venv\Scripts\python.exe -m src.collecte` (2e lancement : 0 nouvelle offre → pas de doublon ✅)
 
-## Étape 4 — Profil 🚧 (en cours)
+## Étape 4 — Profil ✅
 
 - [x] `pypdf` + `pydantic` (sortie JSON validée : `output_format` du SDK → `ResultMessage.structured_output`)
 - [x] Copier le CV dans `data/cv.pdf` (ignoré par Git)
@@ -127,6 +127,20 @@ Interface : Streamlit (local)
   - Cache par empreinte SHA-256 du texte du CV : 1er lancement ~22 s, ensuite < 1 s
   - Le PDF en 2 colonnes mélange les lignes : Claude rattache correctement les puces
   - Lancement : `.venv\Scripts\python.exe -m src.profil`
+
+## Étape 5 — Notation des offres ✅
+
+- [x] `src/notation.py` : Claude note par lots de 10 (technique, niveau, rythme + justification, points forts, vigilance)
+  - Distance et score global **calculés en Python** (déterministe, réglable) : technique 55 %, niveau 20 %, distance 15 %, rythme 10 %
+  - Cache : table `notations` (clé offre + empreinte du CV) → 2e lancement instantané
+  - 18 offres ≈ 3 min ; enregistrement après chaque lot
+  - Lancement : `.venv\Scripts\python.exe -m src.notation`
+- Constats :
+  - Le champ niveau de l'API est parfois faux (Buun : « Bac+3 » dans l'API, « Bac+4/5 » dans la description) → consigne : la description prime
+  - Tutoiement / vouvoiement variable selon les lots → consigne « tutoie toujours »
+  - Aucune offre ne précise le rythme → critère rythme à 50 partout (peu utile pour l'instant)
+  - Variabilité d'un lancement à l'autre : ±5 à 15 points sur le niveau ; le haut du classement reste stable
+  - Piège SDK : ne pas faire `return` dans `async for message in query(...)` (générateur non fermé) → consommer tout le flux
 
 ## Sources
 - https://api.apprentissage.beta.gouv.fr/fr

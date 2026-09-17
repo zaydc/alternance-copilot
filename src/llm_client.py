@@ -25,13 +25,17 @@ async def _generer_json(prompt: str, systeme: str, schema: type[BaseModel]) -> B
         allowed_tools=[],  # moindre privilège : aucun outil (fichiers, shell, web...)
         output_format={"type": "json_schema", "schema": schema.model_json_schema()},
     )
+    resultat = None
+    # On consomme le flux jusqu'au bout : un « return » au milieu laisserait le générateur du SDK ouvert
     async for message in query(prompt=prompt, options=options):
         if isinstance(message, ResultMessage):
-            if message.is_error or message.structured_output is None:
-                raise ErreurLLM(f"Pas de réponse structurée ({message.subtype}) : {message.result}")
-            # Double sécurité : Pydantic revalide la sortie (types, champs obligatoires)
-            return schema.model_validate(message.structured_output)
-    raise ErreurLLM("La conversation s'est terminée sans résultat")
+            resultat = message
+    if resultat is None:
+        raise ErreurLLM("La conversation s'est terminée sans résultat")
+    if resultat.is_error or resultat.structured_output is None:
+        raise ErreurLLM(f"Pas de réponse structurée ({resultat.subtype}) : {resultat.result}")
+    # Double sécurité : Pydantic revalide la sortie (types, champs obligatoires)
+    return schema.model_validate(resultat.structured_output)
 
 
 def generer_json[M: BaseModel](prompt: str, systeme: str, schema: type[M]) -> M:

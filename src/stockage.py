@@ -49,16 +49,22 @@ CREATE TABLE IF NOT EXISTS entreprises (
 );
 
 CREATE TABLE IF NOT EXISTS notations (
-    offre_id      TEXT NOT NULL REFERENCES offres(id),
-    profil_hash   TEXT NOT NULL,
-    score         INTEGER NOT NULL,
-    justification TEXT,
-    date          TEXT NOT NULL,
+    offre_id          TEXT NOT NULL REFERENCES offres(id),
+    profil_hash       TEXT NOT NULL,
+    score             INTEGER NOT NULL,  -- score global pondéré, calculé en Python
+    score_technique   INTEGER NOT NULL,
+    score_niveau      INTEGER NOT NULL,
+    score_rythme      INTEGER NOT NULL,
+    score_distance    INTEGER NOT NULL,
+    justification     TEXT,
+    points_forts      TEXT,  -- liste JSON
+    points_vigilance  TEXT,  -- liste JSON
+    date              TEXT NOT NULL,
     PRIMARY KEY (offre_id, profil_hash)
 );
 """
 
-COLONNES_JSON = {"codes_rome", "types_contrat"}
+COLONNES_JSON = {"codes_rome", "types_contrat", "points_forts", "points_vigilance"}
 
 
 def maintenant() -> str:
@@ -96,3 +102,43 @@ def enregistrer(connexion: sqlite3.Connection, table: str, elements: list[dict],
         connexion.executemany(requete, lignes)
     nouveaux = connexion.execute(f"SELECT COUNT(*) FROM {table} WHERE premiere_vue = ?", (date_collecte,))
     return nouveaux.fetchone()[0]
+
+
+def offres_a_noter(connexion: sqlite3.Connection, profil_hash: str) -> list[sqlite3.Row]:
+    """Offres vues lors de la dernière collecte et pas encore notées pour ce profil (cache)."""
+    return connexion.execute(
+        """
+        SELECT o.* FROM offres o
+        LEFT JOIN notations n ON n.offre_id = o.id AND n.profil_hash = ?
+        WHERE n.offre_id IS NULL
+          AND o.derniere_vue = (SELECT MAX(derniere_vue) FROM offres)
+        ORDER BY o.distance_km
+        """,
+        (profil_hash,),
+    ).fetchall()
+
+
+def enregistrer_notations(connexion: sqlite3.Connection, notations: list[dict]) -> None:
+    if not notations:
+        return
+    colonnes = list(notations[0])
+    requete = f"INSERT OR REPLACE INTO notations ({', '.join(colonnes)}) VALUES ({', '.join('?' for _ in colonnes)})"
+    lignes = [
+        [json.dumps(v, ensure_ascii=False) if c in COLONNES_JSON else v for c, v in notation.items()]
+        for notation in notations
+    ]
+    with connexion:
+        connexion.executemany(requete, lignes)
+
+
+def classement(connexion: sqlite3.Connection, profil_hash: str) -> list[sqlite3.Row]:
+    """Offres actives (dernière collecte) notées pour ce profil, de la meilleure à la moins bonne."""
+    return connexion.execute(
+        """
+        SELECT o.titre, o.entreprise, o.adresse, o.distance_km, o.url_candidature, n.*
+        FROM notations n JOIN offres o ON o.id = n.offre_id
+        WHERE n.profil_hash = ? AND o.derniere_vue = (SELECT MAX(derniere_vue) FROM offres)
+        ORDER BY n.score DESC
+        """,
+        (profil_hash,),
+    ).fetchall()
