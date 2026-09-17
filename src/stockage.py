@@ -139,6 +139,13 @@ CREATE TABLE IF NOT EXISTS cv_adaptes (
     date         TEXT NOT NULL
 );
 
+-- Résultats Hunter.io : une recherche coûte un crédit, on ne la refait jamais
+CREATE TABLE IF NOT EXISTS recherches_hunter (
+    cle       TEXT PRIMARY KEY,  -- entreprise | type de recherche | paramètres
+    resultat  TEXT NOT NULL,     -- réponse JSON de Hunter
+    date      TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS relances (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     candidature_id  INTEGER NOT NULL REFERENCES candidatures(id),
@@ -465,3 +472,18 @@ def enregistrer_analyse(connexion: sqlite3.Connection, offre_id: str, profil_has
 
 def cv_adaptes(connexion: sqlite3.Connection, offre_id: str) -> list[sqlite3.Row]:
     return connexion.execute("SELECT * FROM cv_adaptes WHERE offre_id = ? ORDER BY id DESC", (offre_id,)).fetchall()
+
+
+def hunter_en_cache(connexion: sqlite3.Connection, cle: str) -> dict | None:
+    ligne = connexion.execute("SELECT resultat FROM recherches_hunter WHERE cle = ?", (cle,)).fetchone()
+    return json.loads(ligne["resultat"]) if ligne else None
+
+
+def enregistrer_hunter(connexion: sqlite3.Connection, cle: str, resultat: dict) -> None:
+    with connexion:
+        connexion.execute("INSERT OR REPLACE INTO recherches_hunter (cle, resultat, date) VALUES (?, ?, ?)",
+                          (cle, json.dumps(resultat, ensure_ascii=False), maintenant()))
+
+
+def hunter_par_entreprise(connexion: sqlite3.Connection, entreprise_id: str) -> list[sqlite3.Row]:
+    return connexion.execute("SELECT * FROM recherches_hunter WHERE cle LIKE ?", (f"{entreprise_id}|%",)).fetchall()

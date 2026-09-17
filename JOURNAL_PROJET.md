@@ -282,6 +282,18 @@ Interface : Streamlit (local)
 - Contrôles : aucun débordement ni chevauchement, 1 page ; `data/cv_precedent.pdf` garde l'ancienne version
 - Profil ré-extrait (3 projets, 35 compétences) → les 6 offres récentes ont été **renotées** pour ce nouveau profil
 
+## Étape 14 — README et Hunter.io ✅
+
+- [x] `README.md` : problème, fonctionnalités, architecture, installation, **choix techniques expliqués**,
+  garde-fous, vie privée, tests, limites et ce que le projet m'a appris (mention du binôme avec Claude Code)
+- [x] `src/hunter.py` : adresse nominative quand l'entreprise n'en publie aucune
+  - Plan gratuit : **50 recherches + 100 vérifications / mois** → **cache en base** (table `recherches_hunter`),
+    recherche **sur clic** uniquement, quota affiché dans l'interface
+  - Le nom du dirigeant vient du registre officiel, Hunter ne fournit que le format de l'adresse
+  - Test réel (CALIXYS) : adresse du gérant trouvée, confiance **99/100**, statut **valid**
+  - **RGPD article 14** : l'email indique la provenance de l'adresse et propose de ne plus être recontacté
+    (phrase ajoutée automatiquement dès qu'une adresse Hunter existe)
+
 ## Sources
 - https://api.apprentissage.beta.gouv.fr/fr
 - https://code.claude.com/docs/en/authentication

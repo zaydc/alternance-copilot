@@ -61,6 +61,7 @@ que le lundi, le mercredi et le vendredi, pour ménager mon quota.
 | `notation.py` | Notation des offres par lots, score global pondéré |
 | `candidature.py` / `contacts.py` | Emails spontanés, contacts publiés, dirigeants, liens LinkedIn |
 | `relance.py` | Relances des candidatures sans réponse |
+| `hunter.py` | Recherche d'une adresse nominative (Hunter.io), avec cache et quota |
 | `assistant.py` | L'agent de préparation d'entretien et ses 5 outils |
 | `competences.py` | Compétences demandées par l'offre et absentes du CV |
 | `cv_modele.py` / `cv_segments.py` / `cv_adapte.py` | Modèle HTML du CV, découpage en segments, réécriture contrôlée |
@@ -91,6 +92,7 @@ Copier `.env.example` en `.env` et remplir les deux jetons :
 ```
 CLAUDE_CODE_OAUTH_TOKEN=...   # donné par claude setup-token
 LBA_API_TOKEN=...             # https://api.apprentissage.beta.gouv.fr
+HUNTER_API_KEY=...            # facultatif : trouver une adresse quand l'entreprise n'en publie aucune
 ```
 
 Vérifier que tout répond, puis lancer l'application :
@@ -121,6 +123,12 @@ fichiers ni au shell. Pour les recherches d'entreprise, je n'ouvre que `WebSearc
 
 **Pas de LangChain.** Ses modèles Claude demandent une clé API payante, incompatible avec le jeton d'abonnement.
 L'agent est donc écrit avec le Claude Agent SDK, avec des outils Python exposés en interne.
+
+**Une adresse nominative plutôt qu'une boîte générique.** Quand l'entreprise ne publie aucune adresse, l'application
+peut interroger Hunter.io (facultatif) pour l'adresse du dirigeant, dont le nom vient du registre officiel. Chaque
+recherche coûte un crédit, donc les résultats sont mis en cache, la recherche se lance sur clic, et le score de
+confiance et l'état de délivrabilité sont affichés. L'email indique alors d'où vient l'adresse et comment refuser
+d'être recontacté, comme l'exige l'article 14 du RGPD.
 
 **Pas de scraping LinkedIn**, alors que j'en avais envie au départ. C'est interdit par les conditions de LinkedIn,
 et la CNIL a sanctionné la société KASPR de 240 000 € en décembre 2024 pour avoir aspiré des coordonnées sur ce

@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from pypdf import PdfReader
 
 from src import (assistant, automatisation, candidature, collecte, competences, contacts, cv_adapte, cv_modele,
-                 notation, relance, stockage)
+                 hunter, notation, relance, stockage)
 from src.llm_client import ErreurLLM
 from src.profil import CHEMIN_CV, charger_profil, profil_en_cache
 
@@ -190,7 +190,9 @@ def page_offres() -> None:
 
 # ---------------------------------------------------------------- Page : entreprises (candidatures spontanées)
 
-def afficher_email(objet: str, corps: str, cle: str) -> None:
+def afficher_email(objet: str, corps: str, cle: str, mention_rgpd: bool = False) -> None:
+    if mention_rgpd:  # adresse trouvée via un annuaire : on dit d'où elle vient (RGPD, article 14)
+        corps = f"{corps}\n\n{hunter.MENTION_RGPD}"
     texte = st.text_area("Email (modifiable)", f"{corps}\n\n{candidature.lire_signature()}", height=380, key=cle)
     st.caption(f"Objet : **{objet}** · {len(corps.split())} mots")
     st.code(f"Objet : {objet}\n\n{texte}", language=None, wrap_lines=True)  # bouton « copier » intégré
@@ -265,10 +267,12 @@ def page_entreprises() -> None:
                 with st.expander(f"Sources ({len(json.loads(email['sources']))})"):
                     for url in json.loads(email["sources"]):
                         st.markdown(f"- {url}")
-                afficher_email(email["objet"], email["corps"], cle=f"email-{email['id']}")
+                trouvees = hunter.resultats_connus(entreprise["id"])
+                afficher_email(email["objet"], email["corps"], cle=f"email-{email['id']}", mention_rgpd=bool(trouvees))
                 st.caption(f"Généré le {date_lisible(email['date'])}"
                            + (f" · {len(precedents)} versions" if len(precedents) > 1 else ""))
                 adresses = [p["adresse"] for p in json.loads(email["emails_publics"]) if p["verifiee"] is not False]
+                adresses += [a["email"] for a in trouvees if a["statut"] != "invalid"]
                 marquer_envoye(entreprise, email, "email", adresses)
         with onglet_linkedin:
             afficher_linkedin(entreprise, email)
@@ -306,6 +310,67 @@ def afficher_contacts(entreprise, email) -> None:
         st.markdown(f"- ✉️ `{publie['adresse']}` ({publie['usage']}) · {etat} · [source]({publie['source']})")
     if not publies:
         st.caption("Aucune adresse publiée : passe par le formulaire du site ou par LinkedIn.")
+
+    afficher_hunter(entreprise, personnes, email)
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def quota_hunter() -> dict | None:
+    try:
+        return hunter.quota()
+    except hunter.ErreurHunter:
+        return None
+
+
+def afficher_hunter(entreprise, personnes: list[dict], email) -> None:
+    """Recherche d'une adresse nominative, à la demande : chaque recherche coûte un crédit."""
+    st.markdown("**Contact nominatif** · Hunter.io")
+    quota = quota_hunter()
+    if quota is None:
+        st.caption("Pas de clé Hunter : ajoute `HUNTER_API_KEY` dans `.env` pour activer cette recherche.")
+        return
+    adresses_publiees = [p["adresse"] for p in json.loads(email["emails_publics"])] if email else []
+    domaine = hunter.domaine(email["site_web"] if email else None, adresses_publiees)
+
+    for adresse in hunter.resultats_connus(entreprise["id"]):
+        fiabilite = {"valid": "✅ valide", "accept_all": "⚠️ serveur qui accepte tout : risque de rebond",
+                     "invalid": "❌ invalide", "webmail": "⚠️ adresse personnelle"}.get(adresse["statut"], "❔ inconnu")
+        st.markdown(f"- ✉️ `{adresse['email']}` · {adresse['poste'] or 'poste inconnu'} · "
+                    f"confiance {adresse['score']}/100 · {fiabilite}")
+    if hunter.resultats_connus(entreprise["id"]):
+        st.caption(f"⚖️ RGPD : ces adresses ne viennent pas de la personne. La phrase « {hunter.MENTION_RGPD} » "
+                   "est ajoutée à la fin de l'email.")
+
+    if not domaine:
+        st.caption("Domaine inconnu : lance d'abord **✨ Trouver les contacts et rédiger**.")
+        return
+    colonnes = st.columns([3, 2])
+    noms = {f"{p['prenoms'].split(' ')[0]} {p['nom']}": p for p in personnes}
+    choix = colonnes[0].selectbox("Chercher l'adresse de", list(noms), key=f"hunter-nom-{entreprise['id']}",
+                                  index=None, placeholder="Un dirigeant" if noms else "Aucun dirigeant connu")
+    actions = colonnes[1].columns(2)
+    if actions[0].button("🔎 Cette personne", key=f"hunter-personne-{entreprise['id']}", disabled=not choix,
+                         help="1 crédit si une adresse est trouvée"):
+        with st.spinner(f"Recherche sur {domaine}..."):
+            try:
+                personne = noms[choix]
+                if hunter.trouver_email(entreprise["id"], domaine, personne["prenoms"].split(" ")[0], personne["nom"]):
+                    quota_hunter.clear()
+                    st.rerun()
+                st.warning("Aucune adresse trouvée pour cette personne (aucun crédit consommé).")
+            except hunter.ErreurHunter as erreur:
+                st.error(str(erreur))
+    if actions[1].button("🔎 Le domaine", key=f"hunter-domaine-{entreprise['id']}",
+                         help=f"Toutes les adresses connues de {domaine} · 1 crédit"):
+        with st.spinner(f"Recherche sur {domaine}..."):
+            try:
+                resultat = hunter.adresses_du_domaine(entreprise["id"], domaine)
+                quota_hunter.clear()
+                st.toast(f"Format des adresses : {hunter.format_lisible(resultat.get('pattern'))}")
+                st.rerun()
+            except hunter.ErreurHunter as erreur:
+                st.error(str(erreur))
+    st.caption(f"Crédits restants ce mois : {quota['recherches']} recherches · {quota['verifications']} vérifications")
 
 
 def afficher_linkedin(entreprise, email) -> None:
