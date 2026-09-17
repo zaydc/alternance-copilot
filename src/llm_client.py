@@ -13,16 +13,22 @@ from pydantic import BaseModel
 # et consomme moins les limites de l'abonnement Pro (partagées avec claude.ai)
 MODELE = "sonnet"
 
+# Outils en lecture seule qu'on accepte de donner à Claude (recherche d'informations sur une entreprise)
+OUTILS_WEB = ["WebSearch", "WebFetch"]
+
 
 class ErreurLLM(RuntimeError):
     pass
 
 
-async def _generer_json(prompt: str, systeme: str, schema: type[BaseModel]) -> BaseModel:
+async def _generer_json(prompt: str, systeme: str, schema: type[BaseModel], outils: list[str]) -> BaseModel:
     options = ClaudeAgentOptions(
         model=MODELE,
         system_prompt=systeme,
-        allowed_tools=[],  # moindre privilège : aucun outil (fichiers, shell, web...)
+        # Moindre privilège : « tools » fixe les outils DISPONIBLES (liste vide = aucun : ni fichiers, ni shell).
+        # « allowed_tools » ne fait qu'autoriser sans confirmation ceux de la liste : il ne restreint rien.
+        tools=outils,
+        allowed_tools=outils,
         output_format={"type": "json_schema", "schema": schema.model_json_schema()},
     )
     resultat = None
@@ -38,6 +44,9 @@ async def _generer_json(prompt: str, systeme: str, schema: type[BaseModel]) -> B
     return schema.model_validate(resultat.structured_output)
 
 
-def generer_json[M: BaseModel](prompt: str, systeme: str, schema: type[M]) -> M:
-    """Demande à Claude une réponse conforme au modèle Pydantic `schema` et la renvoie validée."""
-    return asyncio.run(_generer_json(prompt, systeme, schema))
+def generer_json[M: BaseModel](prompt: str, systeme: str, schema: type[M], outils: list[str] | None = None) -> M:
+    """Demande à Claude une réponse conforme au modèle Pydantic `schema` et la renvoie validée.
+
+    `outils` : outils intégrés mis à disposition (par défaut aucun), ex. OUTILS_WEB.
+    """
+    return asyncio.run(_generer_json(prompt, systeme, schema, outils or []))

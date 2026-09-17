@@ -18,8 +18,8 @@ RAYON_KM = 20
 
 
 async def tester_claude() -> None:
-    # allowed_tools vide : l'agent ne peut rien faire d'autre que répondre (moindre privilège)
-    options = ClaudeAgentOptions(allowed_tools=[], max_turns=1)
+    # tools vide : aucun outil disponible, l'agent ne peut que répondre (moindre privilège)
+    options = ClaudeAgentOptions(tools=[], max_turns=1)
     reponse = ""
     async for message in query(prompt="Réponds uniquement par le mot OK.", options=options):
         if isinstance(message, AssistantMessage):
