@@ -2,7 +2,7 @@
 
 1. rechercher() appelle l'API avec les filtres de recherche.
 2. nettoyer_offre() / nettoyer_entreprise() transforment les résultats bruts en dictionnaires plats.
-3. main() enregistre le tout dans SQLite.
+3. collecter() enregistre le tout dans SQLite.
 
 Lancement (depuis la racine du projet) :
     .venv\\Scripts\\python.exe -m src.collecte
@@ -137,19 +137,28 @@ def rechercher() -> tuple[list[dict], list[dict]]:
     return list(offres.values()), list(entreprises.values())
 
 
-def main() -> None:
-    """Collecte les offres et entreprises, puis les enregistre dans SQLite."""
-    sys.stdout.reconfigure(encoding="utf-8")
-    load_dotenv()
+def collecter() -> dict[str, int]:
+    """Collecte les offres et entreprises, les enregistre dans SQLite et renvoie les compteurs."""
     offres, entreprises = rechercher()
-
     date_collecte = stockage.maintenant()
     # closing() ferme la connexion ; un simple « with connexion » ne ferait que valider la transaction
     with closing(stockage.connecter()) as connexion:
         nouvelles_offres = stockage.enregistrer(connexion, "offres", offres, date_collecte)
         nouvelles_entreprises = stockage.enregistrer(connexion, "entreprises", entreprises, date_collecte)
-    print(f"{len(offres)} offres collectées, dont {nouvelles_offres} nouvelles")
-    print(f"{len(entreprises)} entreprises collectées, dont {nouvelles_entreprises} nouvelles")
+    return {
+        "offres": len(offres),
+        "nouvelles_offres": nouvelles_offres,
+        "entreprises": len(entreprises),
+        "nouvelles_entreprises": nouvelles_entreprises,
+    }
+
+
+def main() -> None:
+    sys.stdout.reconfigure(encoding="utf-8")
+    load_dotenv()
+    bilan = collecter()
+    print(f"{bilan['offres']} offres collectées, dont {bilan['nouvelles_offres']} nouvelles")
+    print(f"{bilan['entreprises']} entreprises collectées, dont {bilan['nouvelles_entreprises']} nouvelles")
 
 
 if __name__ == "__main__":

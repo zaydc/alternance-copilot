@@ -168,3 +168,34 @@ def enregistrer_email(connexion: sqlite3.Connection, email: dict) -> None:
         connexion.execute(
             f"INSERT INTO emails ({', '.join(colonnes)}) VALUES ({', '.join('?' for _ in colonnes)})", valeurs
         )
+
+
+def derniere_collecte(connexion: sqlite3.Connection) -> str | None:
+    return connexion.execute("SELECT MAX(derniere_vue) FROM offres").fetchone()[0]
+
+
+def nombre_offres_actives(connexion: sqlite3.Connection) -> int:
+    return connexion.execute(
+        "SELECT COUNT(*) FROM offres WHERE derniere_vue = (SELECT MAX(derniere_vue) FROM offres)"
+    ).fetchone()[0]
+
+
+def lister_entreprises(connexion: sqlite3.Connection, avec_salaries: bool) -> list[sqlite3.Row]:
+    """Entreprises de la dernière collecte, avec le nombre d'emails déjà générés pour chacune."""
+    return connexion.execute(
+        """
+        SELECT e.*, COUNT(m.id) AS nb_emails
+        FROM entreprises e LEFT JOIN emails m ON m.entreprise_id = e.id
+        WHERE e.derniere_vue = (SELECT MAX(derniere_vue) FROM entreprises)
+          AND (? = 0 OR COALESCE(e.taille, '') NOT IN ('', '0-0'))
+        GROUP BY e.id
+        ORDER BY e.distance_km
+        """,
+        (int(avec_salaries),),
+    ).fetchall()
+
+
+def emails_entreprise(connexion: sqlite3.Connection, entreprise_id: str) -> list[sqlite3.Row]:
+    return connexion.execute(
+        "SELECT * FROM emails WHERE entreprise_id = ? ORDER BY date DESC", (entreprise_id,)
+    ).fetchall()

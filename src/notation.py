@@ -9,6 +9,7 @@ Lancement (depuis la racine du projet) :
 
 import json
 import sys
+from collections.abc import Callable
 from contextlib import closing
 
 from dotenv import load_dotenv
@@ -78,18 +79,20 @@ def noter_lot(profil_json: str, offres: list) -> list[NoteOffre]:
     return [note for note in notes if note.offre_id in ids_attendus]
 
 
-def noter_offres() -> None:
+def noter_offres(progression: Callable[[str], None] = print) -> int:
+    """Note les offres pas encore en cache. `progression` reçoit les messages d'avancement. Renvoie le nombre de notes."""
     profil, hash_cv = charger_profil()
     profil_json = profil.model_dump_json(indent=1)
+    total = 0
 
     with closing(stockage.connecter()) as connexion:
         offres = stockage.offres_a_noter(connexion, hash_cv)
         distances = {offre["id"]: offre["distance_km"] for offre in offres}
-        print(f"{len(offres)} offres à noter (les autres sont déjà en cache)")
+        progression(f"{len(offres)} offres à noter (les autres sont déjà en cache)")
 
         for debut in range(0, len(offres), TAILLE_LOT):
             lot = offres[debut : debut + TAILLE_LOT]
-            print(f"  Lot {debut // TAILLE_LOT + 1} : {len(lot)} offres...")
+            progression(f"Lot {debut // TAILLE_LOT + 1} : {len(lot)} offres en cours de notation...")
             notations = []
             for note in noter_lot(profil_json, lot):
                 notation = note.model_dump()
@@ -98,8 +101,17 @@ def noter_offres() -> None:
                 notations.append(notation)
             # Enregistrement après chaque lot : si un lot échoue, les précédents restent en cache
             stockage.enregistrer_notations(connexion, notations)
+            total += len(notations)
+    return total
 
-        print("\nClassement :")
+
+def main() -> None:
+    sys.stdout.reconfigure(encoding="utf-8")
+    load_dotenv()
+    noter_offres()
+    _, hash_cv = charger_profil()
+    print("\nClassement :")
+    with closing(stockage.connecter()) as connexion:
         for ligne in stockage.classement(connexion, hash_cv):
             print(
                 f"  {ligne['score']:3d}  (tech {ligne['score_technique']:3d} | niv {ligne['score_niveau']:3d} "
@@ -109,6 +121,4 @@ def noter_offres() -> None:
 
 
 if __name__ == "__main__":
-    sys.stdout.reconfigure(encoding="utf-8")
-    load_dotenv()
-    noter_offres()
+    main()

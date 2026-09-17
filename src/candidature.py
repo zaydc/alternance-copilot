@@ -56,6 +56,17 @@ def generer_email(entreprise, profil_json: str) -> EmailSpontane:
     return generer_json(prompt, SYSTEME, EmailSpontane, outils=OUTILS_WEB)
 
 
+def rediger_email(connexion, entreprise) -> EmailSpontane:
+    """Génère l'email pour cette entreprise et l'historise dans la table emails."""
+    profil, _ = charger_profil()
+    email = generer_email(entreprise, profil.model_dump_json(indent=1))
+    stockage.enregistrer_email(
+        connexion,
+        {"entreprise_id": entreprise["id"], **email.model_dump(), "date": stockage.maintenant()},
+    )
+    return email
+
+
 def lire_signature(chemin: Path = CHEMIN_SIGNATURE) -> str:
     return chemin.read_text(encoding="utf-8").strip() if chemin.exists() else "[Signature : créer data/signature.txt]"
 
@@ -76,15 +87,10 @@ def main() -> None:
         entreprise = trouvees[0]
         print(f"Recherche et rédaction pour {entreprise['nom']} ({entreprise['adresse']})...\n")
 
-        profil, _ = charger_profil()
         try:
-            email = generer_email(entreprise, profil.model_dump_json(indent=1))
+            email = rediger_email(connexion, entreprise)
         except ErreurLLM as erreur:
             sys.exit(f"❌ {erreur}")
-        stockage.enregistrer_email(
-            connexion,
-            {"entreprise_id": entreprise["id"], **email.model_dump(), "date": stockage.maintenant()},
-        )
 
     if not email.personnalise:
         print("⚠️  Aucune information fiable trouvée : email générique, à personnaliser à la main.\n")

@@ -154,6 +154,23 @@ Interface : Streamlit (local)
 - [ ] Tester la qualité des emails (bloqué : **limite de session Pro atteinte** le 2026-09-17, reset 15h20)
 - Constat : beaucoup d'entreprises ont un effectif « 0-0 » (sans salarié) → cibles peu probables, à filtrer
 
+## Étape 7 — Interface web (Streamlit) 🚧 (en cours)
+
+- Demande : ne plus utiliser le projet en ligne de commande
+- [x] Modules découplés de l'affichage : `collecte.collecter()`, `notation.noter_offres(progression=...)`,
+  `profil.profil_en_cache()` (jamais d'appel à Claude au simple affichage), `candidature.rediger_email()`
+- [x] `app.py` (3 pages + barre latérale) :
+  - **Offres** : classement, score coloré, jauges par critère, points forts / vigilance, filtre par score, lien pour postuler
+  - **Candidatures spontanées** : tableau filtrable (sans salarié masqué : 107 / 150), sélection → email (recherche web), historique, copie
+  - **Profil** : import du CV, profil extrait, édition de la signature
+  - Barre latérale : « Collecter les offres » (API, sans quota) et « Noter les nouvelles offres » (quota Claude)
+- [x] Lanceur double-clic `Alternance Copilot.bat` ; `.streamlit/config.toml` (localhost uniquement, pas de statistiques d'usage)
+- [x] Tests sans navigateur avec `streamlit.testing.v1.AppTest` : 3 pages sans exception
+- [ ] Tester la génération d'email depuis l'interface (après le reset du quota)
+- Constats :
+  - **Smart App Control** (Windows) a bloqué une fois une DLL de pandas au premier chargement, puis l'a autorisée
+  - Des comités sociaux et économiques (secteur « syndicats de salariés ») figurent parmi les entreprises → à filtrer
+
 ## Sources
 - https://api.apprentissage.beta.gouv.fr/fr
 - https://code.claude.com/docs/en/authentication

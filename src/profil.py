@@ -61,16 +61,24 @@ def empreinte(texte: str) -> str:
     return hashlib.sha256(texte.encode("utf-8")).hexdigest()[:16]
 
 
+def profil_en_cache(chemin_cv: Path = CHEMIN_CV) -> tuple[Profil, str] | None:
+    """Profil déjà extrait du CV actuel, sans appeler Claude. None si pas de CV ou CV modifié depuis."""
+    if not chemin_cv.exists() or not CHEMIN_PROFIL.exists():
+        return None
+    hash_cv = empreinte(lire_cv(chemin_cv))
+    sauvegarde = json.loads(CHEMIN_PROFIL.read_text(encoding="utf-8"))
+    if sauvegarde["hash_cv"] != hash_cv:
+        return None
+    return Profil.model_validate(sauvegarde["profil"]), hash_cv
+
+
 def charger_profil(chemin_cv: Path = CHEMIN_CV) -> tuple[Profil, str]:
     """Renvoie (profil, empreinte du CV). N'appelle Claude que si le CV a changé depuis la dernière extraction."""
+    if en_cache := profil_en_cache(chemin_cv):
+        return en_cache
+
     texte = lire_cv(chemin_cv)
     hash_cv = empreinte(texte)
-
-    if CHEMIN_PROFIL.exists():
-        sauvegarde = json.loads(CHEMIN_PROFIL.read_text(encoding="utf-8"))
-        if sauvegarde["hash_cv"] == hash_cv:
-            return Profil.model_validate(sauvegarde["profil"]), hash_cv
-
     profil = generer_json(f"Voici le texte du CV :\n\n{texte}", SYSTEME, Profil)
     sauvegarde = {"hash_cv": hash_cv, "profil": profil.model_dump()}
     CHEMIN_PROFIL.write_text(json.dumps(sauvegarde, ensure_ascii=False, indent=2), encoding="utf-8")
