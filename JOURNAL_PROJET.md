@@ -31,7 +31,7 @@ de lettres de motivation.
 ```
 CV.pdf ──▶ 1. Extraction (Claude, JSON validé) ──▶ Profil JSON
 API La bonne alternance ──▶ 2. Collecte + nettoyage ──▶ SQLite + Chroma
-3. Matching en 2 temps : embeddings locaux → top 30, puis Claude note + justifie (par lots)
+3. Matching : Claude note + justifie toutes les offres (par lots de 10)
 4. Chatbot agent (outils : chercher_offres, detail_offre, mon_profil)
 5. Génération : lettre de motivation / message recruteur
 Interface : Streamlit (local)
@@ -44,6 +44,7 @@ Interface : Streamlit (local)
 | Accès LLM | `claude setup-token` (abonnement Pro) + **Claude Agent SDK** | 0 €, pas de clé API payante |
 | Diffusion | **Usage local uniquement**, pas de publication | Jeton lié à l'abonnement : pas autorisé dans une app publiée |
 | Embeddings | `sentence-transformers` multilingue, en local | Anthropic n'a pas d'embeddings ; gratuit |
+| Matching (révisé 2026-09-17) | **Claude note directement toutes les offres** (pas de présélection par embeddings) | ~18 offres seulement ; embeddings + Chroma réservés au chatbot (recherche sémantique) |
 | Base vectorielle | Chroma via LangChain | Local + LangChain demandé par les offres |
 | Stockage | SQLite | Déduplication + cache des notations |
 | Lecture CV | `pypdf` | Simple |
@@ -57,7 +58,7 @@ Interface : Streamlit (local)
 - **Dossier du projet** : `C:\Users\zaydc\Documents\chatbot` (hors OneDrive, vérifier que Documents n'est pas synchronisé).
 
 ### Périmètre
-- **MVP** : API La bonne alternance, 1 CV, matching 2 temps, chatbot agent 3 outils, lettre de motivation, Streamlit local.
+- **MVP** : API La bonne alternance, 1 CV, notation des offres par Claude, chatbot agent 3 outils, lettre de motivation, Streamlit local.
 - **V2** : API France Travail, plusieurs CV, pondération réglable, mémoire du chat, suivi des candidatures.
 
 ## Étape 2 — Setup ✅
@@ -72,14 +73,14 @@ Interface : Streamlit (local)
 - [x] Vérifier : `claude --version`
 - [x] Générer le jeton : `claude setup-token` (le garder secret)
 - [x] Créer un compte sur l'espace développeurs La bonne alternance (jeton API)
-- [ ] Donner les critères de matching prioritaires (ville/distance, rythme, stack, taille d'entreprise)
+- [x] Donner les critères de matching prioritaires (ville/distance, rythme, stack, taille d'entreprise)
 - [x] Setup partie 2 : `git init` (branche `main`), `.gitignore`, `.env.example` + `.env`, venv Python 3.12 (`.venv`)
 - [x] Remplir `.env` avec les deux jetons
 - [x] Configurer l'identité Git, puis premier commit
 - [x] Dépendances minimales (`requirements.txt`) : `claude-agent-sdk`, `httpx`, `python-dotenv`
 - [x] `scripts/test_connexions.py` : Claude répond « OK » ✅, La bonne alternance renvoie des offres ✅
 
-### Critères de matching (en cours)
+### Critères de matching
 - **Zone** : départements **75, 91, 92, 93, 94** (pas au-delà de La Défense) → filtre `departements` + rayon **30 km** autour de Vigneux-sur-Seine (91270)
   - Test : 20 km = 15 offres ; 30 km = 29 offres (dont doublons) + 150 entreprises
 - **Profil** : BUT Informatique 3e année (niveau 6), développeur full stack + IA/data (LangChain, RAG, ETL)
@@ -105,7 +106,7 @@ Interface : Streamlit (local)
 - Clé **production** en place ✅ (la sandbox renvoyait des offres fictives mal localisées)
 - Sans filtre métier, 20 km autour de Vigneux = **450 offres** (plafond atteint) → il faudra filtrer par codes ROME (métiers informatique/data)
 
-## Étape 3 — Data 🚧 (en cours)
+## Étape 3 — Data ✅
 
 - [x] `src/collecte.py` : `nettoyer_offre()` (champs utiles, HTML → texte, distance depuis Vigneux)
   - Test réel : 29 offres brutes → **18 uniques** (doublons = même `identifier.id`)
@@ -115,6 +116,13 @@ Interface : Streamlit (local)
 - [x] `src/stockage.py` : SQLite `data/alternance.db`, tables `offres`, `entreprises`, `notations` (cache)
   - Upsert sur `id` ; `premiere_vue` / `derniere_vue` pour repérer les nouvelles offres et celles disparues
   - Collecte : `.venv\Scripts\python.exe -m src.collecte` (2e lancement : 0 nouvelle offre → pas de doublon ✅)
+
+## Étape 4 — Profil 🚧 (en cours)
+
+- [x] `pypdf` + `pydantic` (sortie JSON validée : `output_format` du SDK → `ResultMessage.structured_output`)
+- [ ] Copier le CV dans `data/cv.pdf` (ignoré par Git)
+- [ ] Valider le schéma du profil
+- [ ] `src/profil.py` : lecture PDF + extraction par Claude
 
 ## Sources
 - https://api.apprentissage.beta.gouv.fr/fr

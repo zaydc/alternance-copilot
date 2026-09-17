@@ -1,3 +1,5 @@
 claude-agent-sdk==0.2.154
 httpx==0.28.1
+pydantic==2.13.5
+pypdf==6.19.0
 python-dotenv==1.2.3
