@@ -98,6 +98,16 @@ CREATE TABLE IF NOT EXISTS candidatures (
     notes           TEXT
 );
 
+-- Historique des exécutions automatiques (tâche planifiée ou ouverture de l'application)
+CREATE TABLE IF NOT EXISTS executions (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    date              TEXT NOT NULL,
+    origine           TEXT NOT NULL,  -- planifiée, application
+    nouvelles_offres  INTEGER,
+    offres_notees     INTEGER,        -- NULL si la notation n'était pas prévue ce jour-là
+    erreur            TEXT
+);
+
 CREATE TABLE IF NOT EXISTS relances (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     candidature_id  INTEGER NOT NULL REFERENCES candidatures(id),
@@ -368,3 +378,24 @@ def entreprises_recherchees(connexion: sqlite3.Connection) -> list[sqlite3.Row]:
     return connexion.execute(
         "SELECT DISTINCT e.id, e.nom FROM entreprises e JOIN emails m ON m.entreprise_id = e.id ORDER BY e.nom"
     ).fetchall()
+
+
+# ---------------------------------------------------------------- Automatisation
+
+def enregistrer_execution(connexion: sqlite3.Connection, execution: dict) -> int:
+    return inserer(connexion, "executions", {"date": maintenant(), **execution})
+
+
+def derniere_execution(connexion: sqlite3.Connection) -> sqlite3.Row | None:
+    return connexion.execute("SELECT * FROM executions ORDER BY id DESC LIMIT 1").fetchone()
+
+
+def derniere_notation(connexion: sqlite3.Connection) -> str | None:
+    return connexion.execute("SELECT MAX(date) FROM notations").fetchone()[0]
+
+
+def nouvelles_offres_visibles(connexion: sqlite3.Connection, date_collecte: str) -> int:
+    """Offres apparues lors de cette collecte, hors écoles et CFA."""
+    return connexion.execute(
+        "SELECT COUNT(*) FROM offres WHERE premiere_vue = ? AND exclusion IS NULL", (date_collecte,)
+    ).fetchone()[0]

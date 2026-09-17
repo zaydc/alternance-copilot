@@ -234,6 +234,22 @@ Interface : Streamlit (local)
 - Tests AppTest avec un assistant simulé (sans quota) : coach, simulation, changement de mode, effacement
 - Limite : la conversation est perdue si on recharge la page (historique en mémoire de session Streamlit)
 
+## Étape 11 — Automatisation en arrière-plan ✅
+
+- Demande : automatiser la collecte et Claude, mais **Claude seulement quelques fois par semaine** (tokens),
+  **sans notification**, en tâche de fond
+- Options écartées : cloud (GitHub Actions, tâches planifiées distantes) → base et CV locaux, jeton Pro réservé au PC
+- [x] `src/automatisation.py` : collecte **chaque jour** (API gratuite), notation **lundi, mercredi, vendredi**
+  (+ rattrapage si la dernière notation a plus de 3 jours) ; limite de quota → notation reportée, pas d'échec
+  - Historique dans la table `executions` ; journal `data/logs/automatisation.log`
+- [x] Planificateur de tâches Windows : `scripts/planifier_tache.ps1` (installer / retirer / état),
+  lanceurs `Activer la collecte automatique.bat` et `Desactiver la collecte automatique.bat`
+  - Tous les jours à 7h30, `pythonw` (aucune fenêtre), rattrapage au démarrage si le PC était éteint, réseau requis
+  - Testé avec une tâche temporaire lancée par le Planificateur (code 0), puis supprimée
+- [x] Application : état de la tâche et dernier passage dans la barre latérale ; à l'ouverture, collecte de
+  rattrapage **sans notation** si la dernière collecte a plus de 12 h
+- Notifications Windows essayées (PowerShell, sans dépendance) puis **retirées** à la demande
+
 ## Sources
 - https://api.apprentissage.beta.gouv.fr/fr
 - https://code.claude.com/docs/en/authentication

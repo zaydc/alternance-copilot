@@ -6,12 +6,12 @@ Lancement : double-cliquer sur « Alternance Copilot.bat », ou depuis la racine
 
 import json
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import streamlit as st
 from dotenv import load_dotenv
 
-from src import assistant, candidature, collecte, contacts, notation, relance, stockage
+from src import assistant, automatisation, candidature, collecte, contacts, notation, relance, stockage
 from src.llm_client import ErreurLLM
 from src.profil import CHEMIN_CV, charger_profil, profil_en_cache
 
@@ -47,8 +47,47 @@ def couleur_score(score: int) -> str:
 
 # ---------------------------------------------------------------- Barre latérale : actions globales
 
+RATTRAPAGE_COLLECTE_HEURES = 12
+
+
+def collecte_de_rattrapage() -> None:
+    """Une fois par ouverture : si la tâche du matin n'a pas tourné (PC éteint), collecte sans notation (aucun token)."""
+    if st.session_state.get("rattrapage_verifie"):
+        return
+    st.session_state.rattrapage_verifie = True
+    with connexion() as c:
+        derniere = stockage.derniere_collecte(c)
+    if derniere is None or datetime.now(timezone.utc) - datetime.fromisoformat(derniere) > timedelta(hours=RATTRAPAGE_COLLECTE_HEURES):
+        with st.spinner("Collecte des nouvelles offres..."):
+            automatisation.executer(origine="application", avec_notation=False)
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def tache_active() -> bool:
+    return automatisation.tache_planifiee_active()
+
+
+def etat_automatisation() -> None:
+    with connexion() as c:
+        execution = stockage.derniere_execution(c)
+    if tache_active():
+        jours = ", ".join(automatisation.JOURS_NOTATION.values())
+        st.caption(f"⏰ Automatique : collecte chaque matin, notation le {jours}")
+    else:
+        st.caption("⏰ Automatique : inactif · double-clique sur « Activer la collecte automatique.bat »")
+    if execution:
+        notation_faite = (f"{execution['offres_notees']} notée(s)" if execution["offres_notees"] is not None
+                          else "pas de notation")
+        st.caption(f"Dernier passage ({execution['origine']}) : {date_lisible(execution['date'])} · "
+                   f"{execution['nouvelles_offres'] or 0} nouvelle(s) offre(s) · {notation_faite}")
+        if execution["erreur"]:
+            st.warning(execution["erreur"][:150])
+
+
 def barre_laterale() -> None:
+    collecte_de_rattrapage()
     with st.sidebar:
+        etat_automatisation()
         with connexion() as c:
             st.caption(f"Dernière collecte : {date_lisible(stockage.derniere_collecte(c))}")
             nb_relances = len(stockage.candidatures_a_relancer(c))

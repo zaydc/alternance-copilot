@@ -165,7 +165,7 @@ def rechercher() -> tuple[list[dict], list[dict]]:
     return list(offres.values()), list(entreprises.values())
 
 
-def collecter() -> dict[str, int]:
+def collecter() -> dict:
     """Collecte les offres et entreprises, les enregistre dans SQLite et renvoie les compteurs."""
     offres, entreprises = rechercher()
     date_collecte = stockage.maintenant()
@@ -174,6 +174,7 @@ def collecter() -> dict[str, int]:
         nouvelles_offres = stockage.enregistrer(connexion, "offres", offres, date_collecte)
         nouvelles_entreprises = stockage.enregistrer(connexion, "entreprises", entreprises, date_collecte)
     return {
+        "date": date_collecte,
         "offres": len(offres),
         "nouvelles_offres": nouvelles_offres,
         "entreprises": len(entreprises),
