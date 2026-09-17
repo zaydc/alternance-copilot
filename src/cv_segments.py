@@ -103,7 +103,8 @@ def _taille_police(element: Tag) -> float:
 def decouper(html: str) -> tuple[BeautifulSoup, list[Segment]]:
     """Analyse le CV : renvoie le document (avec data-cv-id) et ses segments, dans l'ordre de lecture."""
     document = BeautifulSoup(html, "html.parser")
-    page = document.body.find("div")
+    # Selon la version de l'export : <section class="page"> (format récent) ou un simple <div> de page
+    page = document.body.find("section", class_="page") or document.body.find("div")
     segments: list[Segment] = []
     etat = {"section": "EN-TÊTE", "titre_vu": False}
 

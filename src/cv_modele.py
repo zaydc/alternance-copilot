@@ -51,8 +51,8 @@ def deballer(export_html: str) -> str:
         # Polices et photo intégrées en data: URI : la page ne dépend plus d'aucun fichier ni réseau
         page = page.replace(uuid, f"data:{ressource['mime']};base64,{donnees}")
 
-    # Le moteur de Claude Design n'est pas nécessaire au rendu : on retire ses scripts et ses balises
-    page = re.sub(r'<script src="data:text/javascript[^"]*"></script>', "", page)
+    # Le moteur de Claude Design est conservé : dans le format récent, la page reste invisible
+    # tant que l'élément <doc-page> n'est pas défini par ce script.
     page = re.sub(r'<script type="text/x-dc"[^>]*></script>', "", page)
     entete = re.search(r"<helmet>(.*?)</helmet>", page, re.S)
     page = re.sub(r"<helmet>.*?</helmet>", "", page, flags=re.S)
@@ -100,7 +100,8 @@ def imprimer_pdf(html: str, destination: Path) -> Path:
 SCRIPT_CONTROLE = """
 <script>
 document.fonts.ready.then(function () {
-  var racine = document.body.firstElementChild, page = racine.getBoundingClientRect();
+  var racine = document.querySelector('section.page') || document.body.firstElementChild;
+  var page = racine.getBoundingClientRect();
   var blocs = Array.prototype.filter.call(racine.children, function (b) { return getComputedStyle(b).position === 'absolute'; });
   var segments = [];
   document.querySelectorAll('[data-cv-id]').forEach(function (el) {

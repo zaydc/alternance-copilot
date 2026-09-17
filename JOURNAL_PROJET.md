@@ -269,6 +269,19 @@ Interface : Streamlit (local)
 - Test réel (offre Buun, Java/Spring non confirmé) : 3 min 50 ; Claude n'a mentionné ni Java ni Spring, a réorienté
   l'accroche vers l'entreprise, réordonné les compétences, et signalé les limites à préparer à l'oral
 
+## Étape 13 — CV mis à jour et regénéré ✅
+
+- Le CV a été refait (3 projets dont « Copilote de recherche d'alternance », nouvelle mise en page) :
+  **nouveau format d'export** Claude Design (`<doc-page>` + `<section class="page">`) au lieu d'un simple `div`
+  - `doc-page:not(:defined) { visibility:hidden }` → le moteur JavaScript de l'export est désormais **conservé**
+    (sans lui la page reste invisible) ; le découpage cherche `section.page` puis, à défaut, le premier `div`
+- Modifications appliquées **sans Claude** (édition directe des segments), puis PDF régénéré à l'identique :
+  - « 387 offres collectées, filtrées et **notées** » → « collectées et filtrées » (seules les offres récentes sont notées)
+  - + `SQLite` (bases de données), + `Tâches planifiées` (outils), `Sorties JSON validées` → `Agents LLM (outils)`
+  - Cas particulier : le chiffre clé est une liste de 2 étiquettes de styles différents → seule la description est modifiée
+- Contrôles : aucun débordement ni chevauchement, 1 page ; `data/cv_precedent.pdf` garde l'ancienne version
+- Profil ré-extrait (3 projets, 35 compétences) → les 6 offres récentes ont été **renotées** pour ce nouveau profil
+
 ## Sources
 - https://api.apprentissage.beta.gouv.fr/fr
 - https://code.claude.com/docs/en/authentication
