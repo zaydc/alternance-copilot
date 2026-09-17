@@ -244,7 +244,7 @@ Interface : Streamlit (local)
   - Historique dans la table `executions` ; journal `data/logs/automatisation.log`
 - [x] Planificateur de tâches Windows : `scripts/planifier_tache.ps1` (installer / retirer / état),
   lanceurs `Activer la collecte automatique.bat` et `Desactiver la collecte automatique.bat`
-  - Tous les jours à 7h30, `pythonw` (aucune fenêtre), rattrapage au démarrage si le PC était éteint, réseau requis
+  - Tous les jours à 10h (au départ 7h30, décalé pour être connecté), `pythonw` (aucune fenêtre), rattrapage au démarrage si le PC était éteint, réseau requis
   - Testé avec une tâche temporaire lancée par le Planificateur (code 0), puis supprimée
 - [x] Application : état de la tâche et dernier passage dans la barre latérale ; à l'ouverture, collecte de
   rattrapage **sans notation** si la dernière collecte a plus de 12 h

@@ -3,12 +3,12 @@
   Chaque jour à l'heure choisie : collecte des offres ; notation par Claude le lundi, mercredi et vendredi.
 
   Exemples :
-    .\planifier_tache.ps1 -Action installer -Heure 07:30
+    .\planifier_tache.ps1 -Action installer -Heure 10:00
     .\planifier_tache.ps1 -Action retirer
 #>
 param(
     [ValidateSet("installer", "retirer", "etat")] [string] $Action = "installer",
-    [string] $Heure = "07:30",
+    [string] $Heure = "10:00",
     [string] $Nom = "Alternance Copilot - collecte"
 )
 $ErrorActionPreference = "Stop"
