@@ -1,15 +1,27 @@
 """Collecte des offres d'alternance via l'API La bonne alternance.
 
-Étape 1 : transformer une offre brute de l'API en dictionnaire propre et plat.
+1. rechercher() appelle l'API avec les filtres de recherche.
+2. nettoyer_offre() / nettoyer_entreprise() transforment les résultats bruts en dictionnaires plats.
 """
 
 import html
 import math
+import os
 import re
+
+import httpx
+
+API_LBA = "https://api.apprentissage.beta.gouv.fr/api"
 
 # Centre de la recherche : Vigneux-sur-Seine (91270)
 LATITUDE_CENTRE = 48.7021
 LONGITUDE_CENTRE = 2.4274
+RAYON_KM = 30
+DEPARTEMENTS = ["75", "91", "92", "93", "94"]
+# ROME 4.0 : dev fullstack, dev logiciel, data, chef de projet IT, support/systèmes, admin SI
+CODES_ROME_OFFRES = ["M1827", "M1821", "M1811", "M1806", "M1802", "M1822"]
+# Pour les entreprises, le code dev seul ramène des ESN / éditeurs (les autres codes ramènent banques et comptables)
+CODES_ROME_ENTREPRISES = ["M1827"]
 
 
 def texte_propre(valeur: str | None) -> str:
@@ -64,3 +76,53 @@ def nettoyer_offre(brute: dict) -> dict:
         "date_expiration": offre["publication"]["expiration"],
         "url_candidature": brute["apply"]["url"],
     }
+
+
+def nettoyer_entreprise(brute: dict) -> dict:
+    """Entreprise susceptible de recruter sans offre publiée (piste de candidature spontanée)."""
+    lieu = brute["workplace"]["location"]
+    longitude, latitude = lieu["geopoint"]["coordinates"]
+    naf = brute["workplace"]["domain"].get("naf") or {}
+
+    return {
+        "id": brute["identifier"]["id"],
+        "siret": brute["workplace"]["siret"],
+        "nom": texte_propre(brute["workplace"]["name"]),
+        "adresse": lieu.get("address") or "",
+        "latitude": latitude,
+        "longitude": longitude,
+        "distance_km": distance_km(latitude, longitude),
+        "taille": brute["workplace"]["size"],
+        "secteur": naf.get("label", ""),
+        "telephone": brute["apply"]["phone"],
+        "url_candidature": brute["apply"]["url"],
+    }
+
+
+def appeler_api(codes_rome: list[str]) -> dict:
+    """Appelle la recherche de l'API avec la zone de recherche et les codes ROME donnés."""
+    parametres = {
+        "latitude": LATITUDE_CENTRE,
+        "longitude": LONGITUDE_CENTRE,
+        "radius": RAYON_KM,
+        "romes": ",".join(codes_rome),
+        "departements": DEPARTEMENTS,  # httpx répète le paramètre : departements=75&departements=91...
+    }
+    entetes = {"Authorization": f"Bearer {os.environ['LBA_API_TOKEN']}"}
+    reponse = httpx.get(f"{API_LBA}/job/v1/search", params=parametres, headers=entetes, timeout=60)
+    reponse.raise_for_status()
+    resultats = reponse.json()
+    for alerte in resultats["warnings"]:
+        print(f"Avertissement API : {alerte['message']}")
+    return resultats
+
+
+def rechercher() -> tuple[list[dict], list[dict]]:
+    """Renvoie (offres, entreprises), nettoyées et sans doublons, via deux appels ciblés."""
+    jobs = appeler_api(CODES_ROME_OFFRES)["jobs"]
+    recruteurs = appeler_api(CODES_ROME_ENTREPRISES)["recruiters"]
+
+    # Un dictionnaire indexé par id élimine les doublons (même offre renvoyée par plusieurs sources)
+    offres = {o["id"]: o for o in map(nettoyer_offre, jobs)}
+    entreprises = {e["id"]: e for e in map(nettoyer_entreprise, recruteurs)}
+    return list(offres.values()), list(entreprises.values())

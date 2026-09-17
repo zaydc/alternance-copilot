@@ -110,7 +110,8 @@ Interface : Streamlit (local)
 - [x] `src/collecte.py` : `nettoyer_offre()` (champs utiles, HTML → texte, distance depuis Vigneux)
   - Test réel : 29 offres brutes → **18 uniques** (doublons = même `identifier.id`)
   - Entreprise souvent vide pour France Travail (offres anonymisées)
-- [ ] Appel API avec les filtres (départements, 30 km, codes ROME)
+- [x] `rechercher()` : 2 appels API (départements + 30 km) → offres (6 codes ROME) et entreprises (M1827 seul)
+  - Test : 18 offres + 150 entreprises, dont 141 ESN / éditeurs (avec les 6 codes : surtout banques et comptables)
 - [ ] Stockage SQLite (dédup sur `id`) + entreprises (`recruiters`)
 
 ## Sources
