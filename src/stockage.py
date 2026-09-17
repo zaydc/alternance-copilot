@@ -108,6 +108,37 @@ CREATE TABLE IF NOT EXISTS executions (
     erreur            TEXT
 );
 
+-- Compétences absentes du CV sur lesquelles l'utilisateur s'est prononcé (avec preuve éventuelle)
+CREATE TABLE IF NOT EXISTS competences_declarees (
+    cle          TEXT PRIMARY KEY,  -- nom normalisé
+    nom          TEXT NOT NULL,
+    statut       TEXT NOT NULL,     -- confirmée (preuve jugée convaincante), déclarée (sans preuve convaincante), absente
+    description  TEXT,
+    lien         TEXT,
+    verdict      TEXT,              -- avis de Claude sur la preuve
+    resume_cv    TEXT,              -- formulation courte utilisable dans un CV
+    date         TEXT NOT NULL
+);
+
+-- Compétences demandées par une offre et absentes du profil (cache de l'analyse)
+CREATE TABLE IF NOT EXISTS analyses_offres (
+    offre_id     TEXT NOT NULL,
+    profil_hash  TEXT NOT NULL,
+    competences  TEXT NOT NULL,     -- liste JSON
+    date         TEXT NOT NULL,
+    PRIMARY KEY (offre_id, profil_hash)
+);
+
+CREATE TABLE IF NOT EXISTS cv_adaptes (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    offre_id     TEXT NOT NULL,
+    chemin_pdf   TEXT NOT NULL,
+    changements  TEXT NOT NULL,     -- liste JSON : avant, après, pourquoi
+    alertes      TEXT NOT NULL,     -- liste JSON
+    conseil      TEXT,
+    date         TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS relances (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     candidature_id  INTEGER NOT NULL REFERENCES candidatures(id),
@@ -121,7 +152,8 @@ CREATE TABLE IF NOT EXISTS relances (
 # Ancienneté maximale d'une offre (date de publication) : au-delà, elle n'est ni notée ni affichée
 AGE_MAX_JOURS = 14
 
-COLONNES_JSON = {"codes_rome", "types_contrat", "points_forts", "points_vigilance", "sources", "emails_publics"}
+COLONNES_JSON = {"codes_rome", "types_contrat", "points_forts", "points_vigilance", "sources", "emails_publics",
+                 "competences", "changements", "alertes"}
 
 # Relances : première à J+7 après l'envoi, seconde à J+7 après la première, puis on arrête
 DELAI_RELANCE_JOURS = 7
@@ -399,3 +431,37 @@ def nouvelles_offres_visibles(connexion: sqlite3.Connection, date_collecte: str)
     return connexion.execute(
         "SELECT COUNT(*) FROM offres WHERE premiere_vue = ? AND exclusion IS NULL", (date_collecte,)
     ).fetchone()[0]
+
+
+# ---------------------------------------------------------------- Compétences déclarées et CV adaptés
+
+def competences_declarees(connexion: sqlite3.Connection) -> list[sqlite3.Row]:
+    return connexion.execute("SELECT * FROM competences_declarees ORDER BY nom").fetchall()
+
+
+def declarer_competence(connexion: sqlite3.Connection, competence: dict) -> None:
+    colonnes = list(competence) + ["date"]
+    with connexion:
+        connexion.execute(
+            f"INSERT OR REPLACE INTO competences_declarees ({', '.join(colonnes)}) VALUES ({', '.join('?' for _ in colonnes)})",
+            [*competence.values(), maintenant()],
+        )
+
+
+def analyse_offre(connexion: sqlite3.Connection, offre_id: str, profil_hash: str) -> list[dict] | None:
+    ligne = connexion.execute(
+        "SELECT competences FROM analyses_offres WHERE offre_id = ? AND profil_hash = ?", (offre_id, profil_hash)
+    ).fetchone()
+    return json.loads(ligne["competences"]) if ligne else None
+
+
+def enregistrer_analyse(connexion: sqlite3.Connection, offre_id: str, profil_hash: str, competences: list[dict]) -> None:
+    with connexion:
+        connexion.execute(
+            "INSERT OR REPLACE INTO analyses_offres (offre_id, profil_hash, competences, date) VALUES (?, ?, ?, ?)",
+            (offre_id, profil_hash, json.dumps(competences, ensure_ascii=False), maintenant()),
+        )
+
+
+def cv_adaptes(connexion: sqlite3.Connection, offre_id: str) -> list[sqlite3.Row]:
+    return connexion.execute("SELECT * FROM cv_adaptes WHERE offre_id = ? ORDER BY id DESC", (offre_id,)).fetchall()

@@ -250,6 +250,25 @@ Interface : Streamlit (local)
   rattrapage **sans notation** si la dernière collecte a plus de 12 h
 - Notifications Windows essayées (PowerShell, sans dépendance) puis **retirées** à la demande
 
+## Étape 12 — CV adapté à une offre ✅
+
+- Demande : faire correspondre le CV à l'offre visée, Claude ne touchant qu'au **contenu**, jamais au design, avec PDF téléchargeable
+- Le CV vient de **Claude Design** (export « empaqueté » : HTML + polices + photo en base64, déballé par du JavaScript)
+  - Mise en page **fixe** : A4 794 x 1123 px, blocs en absolu, cartes à hauteur fixe, retours à la ligne manuels
+  - `src/cv_modele.py` : déballage en HTML statique autonome, impression PDF via **Edge** (`--headless --print-to-pdf`,
+    aucune dépendance à installer), contrôle de mise en page (`--dump-dom` + mesures après `document.fonts.ready`)
+  - Vérifié : PDF rendu **identique** au CV d'origine (le HTML fourni est la version violette ; le PDF du CV était la verte)
+- `src/cv_segments.py` : découpage en 55 segments (21 modifiables), gras en `**…**`, réinjection sans toucher au HTML/CSS
+  - Protégés : nom, coordonnées, dates, formation, langues, référence, intitulés de poste et de projet, chiffres clés, étiquettes
+- `src/competences.py` : compétences demandées par l'offre et **absentes du CV** → l'utilisateur répond oui/non,
+  avec preuve facultative (description, lien GitHub consulté par Claude, fichier) ; verdict → statut confirmée / déclarée / absente
+- `src/cv_adapte.py` : réécriture par Claude puis **garde-fous en Python** (testés unitairement) :
+  zone protégée, `**` déséquilibré, chiffre absent du parcours, compétence non confirmée (« Java » ≠ « JavaScript »),
+  élément de liste hors profil → refus + alerte ; puis contrôle de mise en page, **raccourcissement** (2 essais), PDF 1 page
+- Page « CV adapté » : analyse de l'offre, confirmation des compétences, génération, différences avant/après, historique, téléchargement
+- Test réel (offre Buun, Java/Spring non confirmé) : 3 min 50 ; Claude n'a mentionné ni Java ni Spring, a réorienté
+  l'accroche vers l'entreprise, réordonné les compétences, et signalé les limites à préparer à l'oral
+
 ## Sources
 - https://api.apprentissage.beta.gouv.fr/fr
 - https://code.claude.com/docs/en/authentication

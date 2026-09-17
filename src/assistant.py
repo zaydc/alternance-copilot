@@ -18,7 +18,15 @@ MAX_RESULTATS = 10
 
 def mon_profil() -> str:
     en_cache = profil_en_cache()
-    return en_cache[0].model_dump_json(indent=1) if en_cache else "Aucun profil : le CV n'a pas encore été importé."
+    if not en_cache:
+        return "Aucun profil : le CV n'a pas encore été importé."
+    texte = en_cache[0].model_dump_json(indent=1)
+    with closing(stockage.connecter()) as c:
+        declarees = stockage.competences_declarees(c)
+    if confirmees := [d for d in declarees if d["statut"] in ("confirmée", "déclarée")]:
+        texte += "\n\nCompétences confirmées en plus du CV :\n" + "\n".join(
+            f"- {d['nom']} : {d['resume_cv']} ({d['description'] or ''})" for d in confirmees)
+    return texte
 
 
 def chercher_offres(mots_cles: str) -> str:

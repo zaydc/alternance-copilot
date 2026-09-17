@@ -7,11 +7,14 @@ Lancement : double-cliquer sur « Alternance Copilot.bat », ou depuis la racine
 import json
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import streamlit as st
 from dotenv import load_dotenv
+from pypdf import PdfReader
 
-from src import assistant, automatisation, candidature, collecte, contacts, notation, relance, stockage
+from src import (assistant, automatisation, candidature, collecte, competences, contacts, cv_adapte, cv_modele,
+                 notation, relance, stockage)
 from src.llm_client import ErreurLLM
 from src.profil import CHEMIN_CV, charger_profil, profil_en_cache
 
@@ -536,6 +539,136 @@ def page_entretien() -> None:
         repondre(message, mode, cible)
 
 
+# ---------------------------------------------------------------- Page : CV adapté à une offre
+
+def lire_preuve(fichier) -> str:
+    if fichier is None:
+        return ""
+    if fichier.name.lower().endswith(".pdf"):
+        return "\n".join(page.extract_text() for page in PdfReader(fichier).pages)
+    return fichier.getvalue().decode("utf-8", errors="replace")
+
+
+def confirmer_competences(analyse: list[dict]) -> None:
+    """Pour chaque compétence demandée par l'offre et absente du CV : l'as-tu déjà utilisée ?"""
+    st.caption("Ton CV ne dit pas tout : confirme ce que tu sais vraiment faire. Rien n'est ajouté au CV sans ta réponse.")
+    for competence in analyse:
+        nom, declaration = competence["nom"], competence["declaration"]
+        with st.container(border=True):
+            st.markdown(f"**{nom}** · *{competence['importance']}* — l'offre dit : « {competence['extrait'][:120]} »")
+            if declaration and not st.session_state.get(f"revoir-{nom}"):
+                if declaration["statut"] == "absente":
+                    st.info("Tu as indiqué ne pas l'avoir. Elle ne sera pas ajoutée au CV.")
+                else:
+                    st.success(f"{declaration['statut'].capitalize()} : {declaration['resume_cv']}")
+                    if declaration["verdict"]:
+                        st.caption(declaration["verdict"])
+                st.button("Modifier ma réponse", key=f"modif-{nom}", on_click=lambda n=nom: st.session_state.update({f"revoir-{n}": True}))
+                continue
+
+            reponse = st.radio(f"As-tu déjà utilisé {nom} ?", ["Oui", "Non"], key=f"reponse-{nom}", horizontal=True, index=None)
+            if reponse == "Non":
+                if st.button("Enregistrer", key=f"non-{nom}"):
+                    competences.declarer_absente(nom)
+                    st.session_state.pop(f"revoir-{nom}", None)
+                    st.rerun()
+            elif reponse == "Oui":
+                with st.form(f"preuve-{nom}", border=False):
+                    description = st.text_area("Où et comment ? (projet, contexte, ce que tu as fait)", key=f"desc-{nom}",
+                                               placeholder="Ex. : projet perso d'API REST en Spring Boot, 3 entités, tests JUnit…")
+                    lien = st.text_input("Lien (GitHub, démo…) — facultatif", key=f"lien-{nom}")
+                    fichier = st.file_uploader("Fichier de preuve — facultatif", key=f"fichier-{nom}",
+                                               type=["pdf", "md", "txt", "py", "java", "js", "ts", "json", "xml", "yml"])
+                    if st.form_submit_button("Vérifier et enregistrer", type="primary"):
+                        if len((description or "").strip()) < 20:
+                            st.error("Décris un peu plus précisément (au moins une phrase).")
+                        else:
+                            with st.spinner("Claude examine ta preuve..."):
+                                try:
+                                    verdict = competences.confirmer(nom, description, lien, lire_preuve(fichier))
+                                    st.session_state.pop(f"revoir-{nom}", None)
+                                    (st.success if verdict.convaincant else st.warning)(verdict.remarque)
+                                    st.rerun()
+                                except ErreurLLM as erreur:
+                                    st.error(str(erreur))
+
+
+def afficher_cv_adapte(resultat, chemin_pdf: str) -> None:
+    for alerte in resultat.get("alertes", []):
+        st.warning(alerte)
+    if resultat.get("conseil"):
+        st.info(f"💡 {resultat['conseil']}")
+    if mots := resultat.get("mots_cles"):
+        st.markdown("**Mots-clés de l'offre repris :** " + " ".join(f":blue-badge[{m}]" for m in mots))
+    with open(chemin_pdf, "rb") as pdf:
+        st.download_button("⬇️ Télécharger le CV en PDF", pdf.read(), file_name=Path(chemin_pdf).name,
+                           mime="application/pdf", type="primary")
+    st.markdown("##### Ce qui a changé")
+    for changement in resultat["changements"]:
+        with st.container(border=True):
+            st.caption(changement["section"])
+            st.markdown(f":red[− {changement['avant']}]")
+            st.markdown(f":green[+ {changement['apres']}]")
+            st.caption(f"→ {changement['pourquoi']}")
+
+
+def page_cv() -> None:
+    st.title("📄 CV adapté à une offre")
+    if not profil_en_cache():
+        st.info("Commence par importer ton CV dans la page **Profil**.")
+        return
+    if not cv_modele.CHEMIN_MODELE.exists():
+        st.warning("Il manque le **modèle HTML** de ton CV (l'export de ton outil de design). Va dans la page **Profil**.")
+        return
+
+    with connexion() as c:
+        offres = {f"{o['titre'][:70]}" + (f" · {o['score']}/100" if o["score"] is not None else ""): o["id"]
+                  for o in stockage.offres_actives(c)}
+    if not offres:
+        st.info("Aucune offre en base : lance une collecte.")
+        return
+    libelle = st.selectbox("Offre visée", list(offres))
+    offre_id = offres[libelle]
+
+    with connexion() as c:
+        precedents = stockage.cv_adaptes(c, offre_id)
+
+    st.subheader("1. Compétences demandées et absentes de ton CV")
+    if st.button("🔍 Analyser l'offre", help="Compare l'offre à ton profil (utilise le quota Claude)"):
+        with st.spinner("Claude compare l'offre à ton profil..."):
+            try:
+                st.session_state[f"analyse-{offre_id}"] = competences.analyser_offre(offre_id)
+            except ErreurLLM as erreur:
+                st.error(str(erreur))
+    if analyse := st.session_state.get(f"analyse-{offre_id}"):
+        analyse = competences.analyser_offre(offre_id)  # relit les déclarations à jour (mise en cache)
+        confirmer_competences(analyse)
+
+    st.subheader("2. Générer le CV")
+    st.caption("Claude ne modifie que les textes : le design, tes coordonnées, tes dates et tes chiffres restent intacts.")
+    if st.button("✨ Générer le CV adapté", type="primary", help="1 à 4 min : réécriture, contrôle de la mise en page, PDF"):
+        with st.status("Adaptation du CV...", expanded=True) as statut:
+            try:
+                resultat = cv_adapte.adapter(offre_id, progression=st.write)
+                statut.update(label="CV adapté prêt", state="complete")
+                st.rerun()
+            except (ErreurLLM, cv_modele.ErreurModele) as erreur:
+                statut.update(label="Échec", state="error")
+                st.error(str(erreur))
+
+    if precedents:
+        st.subheader("Versions générées")
+        for version in precedents:
+            with st.expander(f"{date_lisible(version['date'])}" + (" · dernière" if version is precedents[0] else ""),
+                             expanded=version is precedents[0]):
+                if not Path(version["chemin_pdf"]).exists():
+                    st.warning("Le fichier PDF a été supprimé.")
+                    continue
+                afficher_cv_adapte({"changements": json.loads(version["changements"]),
+                                    "alertes": json.loads(version["alertes"]), "conseil": version["conseil"]},
+                                   version["chemin_pdf"])
+
+
 # ---------------------------------------------------------------- Page : profil
 
 def page_profil() -> None:
@@ -587,6 +720,24 @@ def page_profil() -> None:
             st.markdown(f"**{projet.nom}** ({projet.contexte}) · {', '.join(projet.technologies)}\n- {projet.resultat}")
 
     st.divider()
+    st.markdown("##### Modèle de CV (pour le CV adapté)")
+    if cv_modele.CHEMIN_MODELE.exists():
+        st.success("Modèle en place : le CV adapté reprendra exactement ce design.")
+    else:
+        st.caption("Exporte ton CV en HTML depuis l'outil où tu l'as créé, puis importe-le ici.")
+    export = st.file_uploader("Export HTML du CV", type="html", help="Le design est conservé tel quel ; seuls les textes seront adaptés")
+    if export is not None and st.button("Importer ce modèle"):
+        chemin_temporaire = cv_modele.CHEMIN_MODELE.with_suffix(".export.html")
+        chemin_temporaire.write_bytes(export.getvalue())
+        try:
+            cv_modele.importer_export(chemin_temporaire)
+            st.success("Modèle importé.")
+        except cv_modele.ErreurModele as erreur:
+            st.error(str(erreur))
+        finally:
+            chemin_temporaire.unlink(missing_ok=True)
+
+    st.divider()
     st.markdown("##### Signature des emails")
     st.caption("Ajoutée en fin d'email, jamais envoyée à Claude.")
     signature = st.text_area("Signature", candidature.lire_signature(), height=110, label_visibility="collapsed")
@@ -601,5 +752,6 @@ st.navigation([
     st.Page(page_entreprises, title="Candidatures spontanées", icon="🏢"),
     st.Page(page_suivi, title="Suivi et relances", icon="📬"),
     st.Page(page_entretien, title="Préparation d'entretien", icon="🎤"),
+    st.Page(page_cv, title="CV adapté", icon="📄"),
     st.Page(page_profil, title="Profil", icon="👤"),
 ]).run()
