@@ -112,7 +112,9 @@ Interface : Streamlit (local)
   - Entreprise souvent vide pour France Travail (offres anonymisées)
 - [x] `rechercher()` : 2 appels API (départements + 30 km) → offres (6 codes ROME) et entreprises (M1827 seul)
   - Test : 18 offres + 150 entreprises, dont 141 ESN / éditeurs (avec les 6 codes : surtout banques et comptables)
-- [ ] Stockage SQLite (dédup sur `id`) + entreprises (`recruiters`)
+- [x] `src/stockage.py` : SQLite `data/alternance.db`, tables `offres`, `entreprises`, `notations` (cache)
+  - Upsert sur `id` ; `premiere_vue` / `derniere_vue` pour repérer les nouvelles offres et celles disparues
+  - Collecte : `.venvScriptspython.exe -m src.collecte` (2e lancement : 0 nouvelle offre → pas de doublon ✅)
 
 ## Sources
 - https://api.apprentissage.beta.gouv.fr/fr
