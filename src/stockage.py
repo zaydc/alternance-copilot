@@ -62,9 +62,20 @@ CREATE TABLE IF NOT EXISTS notations (
     date              TEXT NOT NULL,
     PRIMARY KEY (offre_id, profil_hash)
 );
+
+CREATE TABLE IF NOT EXISTS emails (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    entreprise_id   TEXT NOT NULL REFERENCES entreprises(id),
+    objet           TEXT NOT NULL,
+    corps           TEXT NOT NULL,
+    ce_que_fait     TEXT,  -- résumé de l'activité trouvé sur le web
+    personnalise    INTEGER NOT NULL,  -- 0 si aucune information fiable trouvée
+    sources         TEXT,  -- liste JSON d'URL
+    date            TEXT NOT NULL
+);
 """
 
-COLONNES_JSON = {"codes_rome", "types_contrat", "points_forts", "points_vigilance"}
+COLONNES_JSON = {"codes_rome", "types_contrat", "points_forts", "points_vigilance", "sources"}
 
 
 def maintenant() -> str:
@@ -142,3 +153,18 @@ def classement(connexion: sqlite3.Connection, profil_hash: str) -> list[sqlite3.
         """,
         (profil_hash,),
     ).fetchall()
+
+
+def chercher_entreprises(connexion: sqlite3.Connection, nom: str) -> list[sqlite3.Row]:
+    return connexion.execute(
+        "SELECT * FROM entreprises WHERE nom LIKE ? ORDER BY distance_km", (f"%{nom}%",)
+    ).fetchall()
+
+
+def enregistrer_email(connexion: sqlite3.Connection, email: dict) -> None:
+    colonnes = list(email)
+    valeurs = [json.dumps(v, ensure_ascii=False) if c in COLONNES_JSON else v for c, v in email.items()]
+    with connexion:
+        connexion.execute(
+            f"INSERT INTO emails ({', '.join(colonnes)}) VALUES ({', '.join('?' for _ in colonnes)})", valeurs
+        )

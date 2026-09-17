@@ -6,7 +6,7 @@ Le reste du projet n'importe jamais le Claude Agent SDK directement : pour passe
 
 import asyncio
 
-from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
+from claude_agent_sdk import ClaudeAgentOptions, ResultError, ResultMessage, query
 from pydantic import BaseModel
 
 # « sonnet » plutôt qu'« opus » : largement suffisant pour de l'extraction et de la notation,
@@ -33,9 +33,13 @@ async def _generer_json(prompt: str, systeme: str, schema: type[BaseModel], outi
     )
     resultat = None
     # On consomme le flux jusqu'au bout : un « return » au milieu laisserait le générateur du SDK ouvert
-    async for message in query(prompt=prompt, options=options):
-        if isinstance(message, ResultMessage):
-            resultat = message
+    try:
+        async for message in query(prompt=prompt, options=options):
+            if isinstance(message, ResultMessage):
+                resultat = message
+    except ResultError as erreur:
+        # Ex. : « You've hit your session limit · resets 3:20pm » (limites Pro partagées avec claude.ai)
+        raise ErreurLLM(f"Claude a renvoyé une erreur : {erreur.result or erreur.errors}") from erreur
     if resultat is None:
         raise ErreurLLM("La conversation s'est terminée sans résultat")
     if resultat.is_error or resultat.structured_output is None:

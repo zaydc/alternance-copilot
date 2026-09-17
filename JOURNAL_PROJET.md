@@ -142,6 +142,18 @@ Interface : Streamlit (local)
   - Variabilité d'un lancement à l'autre : ±5 à 15 points sur le niveau ; le haut du classement reste stable
   - Piège SDK : ne pas faire `return` dans `async for message in query(...)` (générateur non fermé) → consommer tout le flux
 
+## Étape 6 — Candidatures spontanées 🚧 (en cours)
+
+- Choix : **email court personnalisé** (120–170 mots) plutôt que lettre classique
+- [x] **Correctif sécurité** : `allowed_tools` n'empêche rien (il autorise sans confirmation) ; c'est `tools` qui fixe les outils disponibles.
+  `tools=[]` → Claude n'a que `StructuredOutput`. Pour les emails : `tools=["WebSearch", "WebFetch"]` (lecture seule).
+- [x] `src/candidature.py` : recherche web sur l'entreprise, puis email (objet, corps, ce que fait l'entreprise, sources, `personnalise`)
+  - Signature ajoutée depuis `data/signature.txt` (jamais envoyée à Claude, jamais dans Git)
+  - Emails historisés dans la table `emails`
+  - Lancement : `.venv\Scripts\python.exe -m src.candidature "nom de l'entreprise"`
+- [ ] Tester la qualité des emails (bloqué : **limite de session Pro atteinte** le 2026-09-17, reset 15h20)
+- Constat : beaucoup d'entreprises ont un effectif « 0-0 » (sans salarié) → cibles peu probables, à filtrer
+
 ## Sources
 - https://api.apprentissage.beta.gouv.fr/fr
 - https://code.claude.com/docs/en/authentication
