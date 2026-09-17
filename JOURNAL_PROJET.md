@@ -60,7 +60,7 @@ Interface : Streamlit (local)
 - **MVP** : API La bonne alternance, 1 CV, matching 2 temps, chatbot agent 3 outils, lettre de motivation, Streamlit local.
 - **V2** : API France Travail, plusieurs CV, pondération réglable, mémoire du chat, suivi des candidatures.
 
-## Étape 2 — Setup 🚧 (en cours)
+## Étape 2 — Setup ✅
 
 ### Vérifié
 - Python **3.12.10** ✅ (3.14 aussi présente → utiliser explicitement la 3.12)
@@ -76,6 +76,22 @@ Interface : Streamlit (local)
 - [x] Setup partie 2 : `git init` (branche `main`), `.gitignore`, `.env.example` + `.env`, venv Python 3.12 (`.venv`)
 - [x] Remplir `.env` avec les deux jetons
 - [x] Configurer l'identité Git, puis premier commit
+- [x] Dépendances minimales (`requirements.txt`) : `claude-agent-sdk`, `httpx`, `python-dotenv`
+- [x] `scripts/test_connexions.py` : Claude répond « OK » ✅, La bonne alternance renvoie des offres ✅
+
+### Critères de matching (en cours)
+- **Zone** : Vigneux-sur-Seine (91270), rayon **20 km**
+- Autres critères (rythme, stack, taille d'entreprise) : à classer
+
+### Notes API La bonne alternance
+- Base : `https://api.apprentissage.beta.gouv.fr/api`, en-tête `Authorization: Bearer <jeton>`
+- Spécification OpenAPI : `https://api.apprentissage.beta.gouv.fr/api/documentation/json`
+- `GET /geographie/v1/commune/search?code=91270` → centre GPS de la commune (`[longitude, latitude]`)
+- `GET /job/v1/search?latitude=&longitude=&radius=` (+ `romes`, `rncp`, `target_diploma_level`) → `jobs`, `recruiters`, `warnings`
+- Limite : **60 appels/min** ; 150 résultats max par source (450 au total)
+- Le type de clé (**sandbox** ou **production**) détermine l'environnement : une clé sandbox renvoie des offres de test
+- Clé **production** en place ✅ (la sandbox renvoyait des offres fictives mal localisées)
+- Sans filtre métier, 20 km autour de Vigneux = **450 offres** (plafond atteint) → il faudra filtrer par codes ROME (métiers informatique/data)
 
 ## Sources
 - https://api.apprentissage.beta.gouv.fr/fr
