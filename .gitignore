@@ -1,0 +1,16 @@
+# Secrets
+.env
+
+# Environnement Python
+.venv/
+__pycache__/
+*.pyc
+
+# Données locales (CV réels, base SQLite, index Chroma)
+data/
+*.db
+chroma/
+
+# Éditeur / OS
+.vscode/
+Thumbs.db
