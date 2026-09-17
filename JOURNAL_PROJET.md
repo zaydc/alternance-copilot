@@ -120,9 +120,13 @@ Interface : Streamlit (local)
 ## Étape 4 — Profil 🚧 (en cours)
 
 - [x] `pypdf` + `pydantic` (sortie JSON validée : `output_format` du SDK → `ResultMessage.structured_output`)
-- [ ] Copier le CV dans `data/cv.pdf` (ignoré par Git)
-- [ ] Valider le schéma du profil
-- [ ] `src/profil.py` : lecture PDF + extraction par Claude
+- [x] Copier le CV dans `data/cv.pdf` (ignoré par Git)
+- [x] Valider le schéma du profil (sans données de contact : minimisation RGPD)
+- [x] `src/llm_client.py` : `generer_json(prompt, systeme, ModelePydantic)` — modèle `sonnet`, aucun outil
+- [x] `src/profil.py` : lecture PDF + extraction par Claude → `data/profil.json`
+  - Cache par empreinte SHA-256 du texte du CV : 1er lancement ~22 s, ensuite < 1 s
+  - Le PDF en 2 colonnes mélange les lignes : Claude rattache correctement les puces
+  - Lancement : `.venv\Scripts\python.exe -m src.profil`
 
 ## Sources
 - https://api.apprentissage.beta.gouv.fr/fr
