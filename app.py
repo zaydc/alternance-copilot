@@ -298,19 +298,20 @@ def afficher_contacts(entreprise, email) -> None:
 
     st.markdown("**Contacts publiés par l'entreprise** · trouvés par Claude, vérifiés sur la page source")
     if not email:
-        st.caption("Clique sur **✨ Trouver les contacts et rédiger**.")
-        return
-    if email["site_web"]:
-        st.markdown(f"- 🌐 Site : {email['site_web']}")
-    if email["page_carrieres"]:
-        st.markdown(f"- 📄 Carrières / contact : {email['page_carrieres']}")
-    publies = json.loads(email["emails_publics"])
-    for publie in publies:
-        etat = {True: "✅ vérifiée sur la page", False: "⚠️ absente de la page : ne pas utiliser", None: "❔ page inaccessible : à vérifier"}[publie["verifiee"]]
-        st.markdown(f"- ✉️ `{publie['adresse']}` ({publie['usage']}) · {etat} · [source]({publie['source']})")
-    if not publies:
-        st.caption("Aucune adresse publiée : passe par le formulaire du site ou par LinkedIn.")
+        st.caption("Clique sur **✨ Trouver les contacts et rédiger** pour les chercher.")
+    else:
+        if email["site_web"]:
+            st.markdown(f"- 🌐 Site : {email['site_web']}")
+        if email["page_carrieres"]:
+            st.markdown(f"- 📄 Carrières / contact : {email['page_carrieres']}")
+        publies = json.loads(email["emails_publics"])
+        for publie in publies:
+            etat = {True: "✅ vérifiée sur la page", False: "⚠️ absente de la page : ne pas utiliser", None: "❔ page inaccessible : à vérifier"}[publie["verifiee"]]
+            st.markdown(f"- ✉️ `{publie['adresse']}` ({publie['usage']}) · {etat} · [source]({publie['source']})")
+        if not publies:
+            st.caption("Aucune adresse publiée : passe par le formulaire du site ou par LinkedIn.")
 
+    st.divider()
     afficher_hunter(entreprise, personnes, email)
 
 
@@ -341,8 +342,11 @@ def afficher_hunter(entreprise, personnes: list[dict], email) -> None:
         st.caption(f"⚖️ RGPD : ces adresses ne viennent pas de la personne. La phrase « {hunter.MENTION_RGPD} » "
                    "est ajoutée à la fin de l'email.")
 
+    # Sans recherche préalable, le domaine est inconnu : on le demande (gratuit tant qu'on ne cherche pas)
+    domaine = st.text_input("Domaine de l'entreprise", value=domaine or "", key=f"hunter-domaine-saisi-{entreprise['id']}",
+                            placeholder="exemple.fr", help="Rempli automatiquement après « Trouver les contacts »")
     if not domaine:
-        st.caption("Domaine inconnu : lance d'abord **✨ Trouver les contacts et rédiger**.")
+        st.caption("Indique le domaine du site de l'entreprise, ou lance **✨ Trouver les contacts et rédiger**.")
         return
     colonnes = st.columns([3, 2])
     noms = {f"{p['prenoms'].split(' ')[0]} {p['nom']}": p for p in personnes}
