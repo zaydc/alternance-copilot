@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 import streamlit as st
 from dotenv import load_dotenv
 
-from src import candidature, collecte, contacts, notation, relance, stockage
+from src import assistant, candidature, collecte, contacts, notation, relance, stockage
 from src.llm_client import ErreurLLM
 from src.profil import CHEMIN_CV, charger_profil, profil_en_cache
 
@@ -390,6 +390,113 @@ def page_suivi() -> None:
                 stockage.changer_statut(c, toutes[int(index)]["id"], changement["Statut"])
 
 
+# ---------------------------------------------------------------- Page : préparation d'entretien (chatbot)
+
+LIBELLES_OUTILS = {
+    "mon_profil": "📄 Lecture de ton profil", "chercher_offres": "🔎 Recherche dans les offres",
+    "detail_offre": "📋 Lecture de l'offre", "infos_entreprise": "🏢 Fiche de l'entreprise",
+    "mes_candidatures": "📬 Lecture de tes candidatures", "WebSearch": "🌐 Recherche web", "WebFetch": "🌐 Lecture d'une page web",
+}
+MODES_CHAT = {"💬 Coach": "coach", "🎭 Simulation d'entretien": "simulation"}
+SUGGESTIONS = [
+    "Fais-moi une fiche de préparation sur cette entreprise",
+    "Quelles questions techniques risque-t-on de me poser ?",
+    "Aide-moi à préparer mon pitch de présentation en 1 minute",
+    "Quelles questions poser au recruteur ?",
+]
+
+
+def cibles_possibles() -> dict[str, str | None]:
+    """Libellé affiché → description de la cible transmise à l'assistant."""
+    options: dict[str, str | None] = {"Aucune cible (discussion libre)": None}
+    with connexion() as c:
+        for cand in stockage.candidatures(c):
+            reference = f"offre id={cand['offre_id']}" if cand["offre_id"] else "candidature spontanée"
+            options[f"📬 {cand['nom']}"] = f"{cand['nom']} ({reference}, envoyée le {cand['date_envoi'][:10]}, statut {cand['statut']})"
+        for offre in stockage.offres_actives(c):
+            score = f" · {offre['score']}/100" if offre["score"] is not None else ""
+            options.setdefault(f"📋 {offre['titre'][:70]}{score}",
+                               f"Offre id={offre['id']} : {offre['titre']} ({offre['entreprise'] or 'entreprise non communiquée'})")
+        for entreprise in stockage.entreprises_recherchees(c):
+            options.setdefault(f"🏢 {entreprise['nom']}", f"Entreprise {entreprise['nom']} (candidature spontanée)")
+    return options
+
+
+def nouvelle_conversation() -> None:
+    st.session_state.chat_messages = []
+    st.session_state.chat_session = None
+    st.session_state.pop("chat_suggestion", None)  # sinon la suggestion restée sélectionnée serait renvoyée
+
+
+def repondre(message: str, mode: str, cible: str | None) -> None:
+    st.session_state.chat_messages.append({"role": "user", "content": message})
+    with st.chat_message("user"):
+        st.markdown(message)
+    with st.chat_message("assistant"):
+        activite = st.empty()
+        activite.caption("💭 Réflexion…")
+
+        def texte_seul():
+            for type_, valeur in assistant.envoyer(message, mode, cible, st.session_state.chat_session):
+                if type_ == "texte":
+                    activite.empty()
+                    yield valeur
+                elif type_ == "outil":
+                    activite.caption(f"{LIBELLES_OUTILS.get(valeur, '🔧 ' + valeur)}…")
+                elif type_ == "session":
+                    st.session_state.chat_session = valeur
+
+        try:
+            reponse = st.write_stream(texte_seul())
+            st.session_state.chat_messages.append({"role": "assistant", "content": reponse})
+        except ErreurLLM as erreur:
+            activite.empty()
+            st.session_state.chat_messages.pop()  # le message n'a pas été traité : on le retire de l'historique
+            st.error(str(erreur))
+            return
+    st.rerun()  # réaffiche proprement : l'historique à jour, sans le bouton ou la suggestion qui vient de servir
+
+
+def page_entretien() -> None:
+    st.title("🎤 Préparation d'entretien")
+    if not profil_en_cache():
+        st.info("Commence par importer ton CV dans la page **Profil**.")
+        return
+
+    reglages = st.columns([2, 4, 1])
+    mode = MODES_CHAT[reglages[0].segmented_control("Mode", list(MODES_CHAT), default="💬 Coach") or "💬 Coach"]
+    options = cibles_possibles()
+    libelle = reglages[1].selectbox("Préparer un entretien pour", list(options))
+    cible = options[libelle]
+    reglages[2].button("🗑️ Effacer", on_click=nouvelle_conversation, help="Nouvelle conversation", width="stretch")
+
+    # Changer de mode ou de cible démarre une nouvelle conversation
+    if "chat_messages" not in st.session_state or st.session_state.get("chat_contexte") != (mode, cible):
+        st.session_state.chat_contexte = (mode, cible)
+        nouvelle_conversation()
+
+    for message in st.session_state.chat_messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    a_envoyer = None
+    if not st.session_state.chat_messages:
+        if mode == "simulation":
+            st.caption("Claude joue le recruteur : une question à la fois, un retour après chaque réponse, "
+                       "puis un bilan noté (écris « bilan » pour l'obtenir à tout moment).")
+            if st.button("🎬 Démarrer la simulation", type="primary", disabled=cible is None,
+                         help=None if cible else "Choisis d'abord une offre ou une entreprise"):
+                a_envoyer = "Commence la simulation."
+        else:
+            a_envoyer = st.pills("Suggestions", SUGGESTIONS, key="chat_suggestion", label_visibility="collapsed")
+    elif mode == "simulation" and st.button("📊 Bilan de la simulation"):
+        a_envoyer = "bilan"
+
+    saisie = st.chat_input("Ta réponse…" if mode == "simulation" else "Pose ta question…")
+    if message := saisie or a_envoyer:
+        repondre(message, mode, cible)
+
+
 # ---------------------------------------------------------------- Page : profil
 
 def page_profil() -> None:
@@ -454,5 +561,6 @@ st.navigation([
     st.Page(page_offres, title="Offres", icon="🏆", default=True),
     st.Page(page_entreprises, title="Candidatures spontanées", icon="🏢"),
     st.Page(page_suivi, title="Suivi et relances", icon="📬"),
+    st.Page(page_entretien, title="Préparation d'entretien", icon="🎤"),
     st.Page(page_profil, title="Profil", icon="👤"),
 ]).run()

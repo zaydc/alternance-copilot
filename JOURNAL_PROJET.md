@@ -211,6 +211,29 @@ Interface : Streamlit (local)
 - Sur la base réelle : IFCV APPRENTISSAGE masquée ; cas limite côté entreprises : « HN SERVICES - HN FORMATION -
   HN RECRUTEMENT » (ESN avec une activité de formation) masquée par le mot « formation »
 
+## Étape 10 — Chatbot de préparation d'entretien ✅
+
+- Demande : un chatbot pour discuter et préparer les entretiens
+- **LangChain écarté** : ses modèles Claude exigent une clé API payante, incompatible avec le jeton de l'abonnement Pro.
+  Agent construit avec le **Claude Agent SDK** (même principe : un LLM qui décide d'appeler des outils).
+- [x] `llm_client.discuter()` : conversation multi-tours (`resume` = id de session), texte en flux
+  (`include_partial_messages`), outils Python exposés via un serveur MCP interne (`create_sdk_mcp_server`)
+  - Générateur synchrone pour Streamlit : la boucle asyncio tourne dans un fil séparé, les événements passent par une file
+  - Outils intégrés limités au web en lecture seule ; sessions rangées dans `data/sessions`
+  - `OutilPerso` : outils décrits sans dépendre du SDK (l'abstraction `llm_client` reste la seule à l'importer)
+- [x] `src/assistant.py` : 5 outils en lecture seule (`mon_profil`, `chercher_offres`, `detail_offre`,
+  `infos_entreprise`, `mes_candidatures`) + 2 modes :
+  - **Coach** : fiche entreprise, questions probables, pitch, questions à poser au recruteur
+  - **Simulation d'entretien** : Claude joue le recruteur, 1 question à la fois, retour [✅ ⚠️ 💡] après chaque réponse,
+    bilan noté sur 4 axes ; consigne de ne jamais aider à embellir le parcours
+- [x] Page « Préparation d'entretien » : choix du mode et de la cible (candidatures, offres, entreprises recherchées),
+  suggestions, bouton « Démarrer la simulation » / « Bilan », activité des outils affichée pendant la réponse
+- Test réel (simulation Buun) : tour 1 en 25 s (l'agent appelle seul profil, offre, entreprise, 2 recherches web),
+  tour 2 en 8 s avec reprise du contexte ; retour pertinent (« pourquoi Buun ? » manquant) et question technique
+  tirée de l'offre (idempotence des webhooks)
+- Tests AppTest avec un assistant simulé (sans quota) : coach, simulation, changement de mode, effacement
+- Limite : la conversation est perdue si on recharge la page (historique en mémoire de session Streamlit)
+
 ## Sources
 - https://api.apprentissage.beta.gouv.fr/fr
 - https://code.claude.com/docs/en/authentication

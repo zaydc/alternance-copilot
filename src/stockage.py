@@ -349,3 +349,22 @@ def email_par_id(connexion: sqlite3.Connection, email_id: int | None) -> sqlite3
     if email_id is None:
         return None
     return connexion.execute("SELECT * FROM emails WHERE id = ?", (email_id,)).fetchone()
+
+
+def offres_actives(connexion: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Offres de la dernière collecte (hors écoles), les mieux notées d'abord, quelle que soit leur ancienneté."""
+    return connexion.execute(
+        """
+        SELECT o.id, o.titre, o.entreprise, MAX(n.score) AS score
+        FROM offres o LEFT JOIN notations n ON n.offre_id = o.id
+        WHERE o.derniere_vue = (SELECT MAX(derniere_vue) FROM offres) AND o.exclusion IS NULL
+        GROUP BY o.id ORDER BY score DESC
+        """
+    ).fetchall()
+
+
+def entreprises_recherchees(connexion: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Entreprises sur lesquelles une recherche (email) a déjà été faite."""
+    return connexion.execute(
+        "SELECT DISTINCT e.id, e.nom FROM entreprises e JOIN emails m ON m.entreprise_id = e.id ORDER BY e.nom"
+    ).fetchall()

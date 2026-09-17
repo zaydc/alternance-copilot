@@ -5,8 +5,23 @@ Le reste du projet n'importe jamais le Claude Agent SDK directement : pour passe
 """
 
 import asyncio
+import queue
+import threading
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass
+from pathlib import Path
 
-from claude_agent_sdk import ClaudeAgentOptions, ResultError, ResultMessage, query
+from claude_agent_sdk import (
+    AssistantMessage,
+    ClaudeAgentOptions,
+    ResultError,
+    ResultMessage,
+    StreamEvent,
+    ToolUseBlock,
+    create_sdk_mcp_server,
+    query,
+    tool,
+)
 from pydantic import BaseModel
 
 # « sonnet » plutôt qu'« opus » : largement suffisant pour de l'extraction et de la notation,
@@ -15,6 +30,10 @@ MODELE = "sonnet"
 
 # Outils en lecture seule qu'on accepte de donner à Claude (recherche d'informations sur une entreprise)
 OUTILS_WEB = ["WebSearch", "WebFetch"]
+
+# Dossier de travail des conversations : l'historique des sessions est rangé à part de celui du projet
+DOSSIER_SESSIONS = Path(__file__).resolve().parent.parent / "data" / "sessions"
+NOM_SERVEUR_OUTILS = "copilot"
 
 
 class ErreurLLM(RuntimeError):
@@ -54,3 +73,85 @@ def generer_json[M: BaseModel](prompt: str, systeme: str, schema: type[M], outil
     `outils` : outils intégrés mis à disposition (par défaut aucun), ex. OUTILS_WEB.
     """
     return asyncio.run(_generer_json(prompt, systeme, schema, outils or []))
+
+
+# ---------------------------------------------------------------- Conversation avec outils personnalisés
+
+@dataclass
+class OutilPerso:
+    """Outil écrit en Python, décrit sans dépendre du SDK."""
+    nom: str
+    description: str
+    parametres: dict[str, type]  # ex. {"offre_id": str} ; {} si aucun paramètre
+    fonction: Callable[..., str]  # appelée avec les paramètres nommés, renvoie du texte
+
+
+def _vers_outil_sdk(outil: OutilPerso):
+    @tool(outil.nom, outil.description, outil.parametres)
+    async def executer(arguments: dict) -> dict:
+        try:
+            # Les fonctions font des accès SQLite / HTTP bloquants : on les sort de la boucle asyncio
+            texte = await asyncio.to_thread(outil.fonction, **arguments)
+        except Exception as erreur:  # l'agent voit l'erreur et peut s'adapter, au lieu de tout interrompre
+            return {"content": [{"type": "text", "text": f"Erreur : {erreur}"}], "is_error": True}
+        return {"content": [{"type": "text", "text": texte}]}
+
+    return executer
+
+
+async def _discuter(message: str, systeme: str, outils: list[OutilPerso], session: str | None, emettre) -> None:
+    serveur = create_sdk_mcp_server(NOM_SERVEUR_OUTILS, tools=[_vers_outil_sdk(o) for o in outils])
+    noms_outils = OUTILS_WEB + [f"mcp__{NOM_SERVEUR_OUTILS}__{o.nom}" for o in outils]
+    DOSSIER_SESSIONS.mkdir(parents=True, exist_ok=True)
+    options = ClaudeAgentOptions(
+        model=MODELE,
+        system_prompt=systeme,
+        tools=OUTILS_WEB,  # outils intégrés disponibles : web en lecture seule, rien d'autre
+        mcp_servers={NOM_SERVEUR_OUTILS: serveur},
+        allowed_tools=noms_outils,
+        resume=session,  # reprend l'historique de la conversation
+        include_partial_messages=True,  # texte envoyé au fil de l'eau
+        max_turns=12,
+        cwd=DOSSIER_SESSIONS,
+    )
+    try:
+        async for evenement in query(prompt=message, options=options):
+            if isinstance(evenement, StreamEvent):
+                delta = evenement.event.get("delta", {})
+                if evenement.event.get("type") == "content_block_delta" and delta.get("type") == "text_delta":
+                    emettre(("texte", delta["text"]))
+            elif isinstance(evenement, AssistantMessage):
+                for bloc in evenement.content:
+                    if isinstance(bloc, ToolUseBlock):
+                        emettre(("outil", bloc.name.removeprefix(f"mcp__{NOM_SERVEUR_OUTILS}__")))
+            elif isinstance(evenement, ResultMessage):
+                if evenement.is_error:
+                    raise ErreurLLM(f"Claude a renvoyé une erreur : {evenement.result}")
+                emettre(("session", evenement.session_id))
+    except ResultError as erreur:
+        raise ErreurLLM(f"Claude a renvoyé une erreur : {erreur.result or erreur.errors}") from erreur
+
+
+def discuter(message: str, systeme: str, outils: list[OutilPerso], session: str | None = None) -> Iterator[tuple[str, str]]:
+    """Envoie un message à l'agent et produit ses événements au fil de l'eau :
+    ("texte", morceau de réponse), ("outil", nom de l'outil appelé), ("session", id à passer au tour suivant).
+
+    Générateur synchrone (utilisable par Streamlit) : la boucle asyncio tourne dans un fil d'exécution séparé.
+    """
+    file: queue.Queue = queue.Queue()
+    fin = object()
+
+    def travail() -> None:
+        try:
+            asyncio.run(_discuter(message, systeme, outils, session, file.put))
+        except Exception as erreur:
+            file.put(("erreur", erreur))
+        finally:
+            file.put(fin)
+
+    threading.Thread(target=travail, daemon=True).start()
+    while (evenement := file.get()) is not fin:
+        if evenement[0] == "erreur":
+            erreur = evenement[1]
+            raise erreur if isinstance(erreur, ErreurLLM) else ErreurLLM(str(erreur))
+        yield evenement
