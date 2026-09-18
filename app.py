@@ -453,7 +453,7 @@ def afficher_cv_entreprise(entreprise, email) -> None:
     if Path(derniere["chemin_pdf"]).exists():
         afficher_cv_adapte({"changements": json.loads(derniere["changements"]),
                             "alertes": json.loads(derniere["alertes"]), "conseil": derniere["conseil"]},
-                           derniere["chemin_pdf"])
+                           derniere["chemin_pdf"], cv_adapte.nom_fichier(cible, entreprise["nom"]))
     else:
         st.warning("Le fichier PDF a été supprimé : regénère-le.")
 
@@ -733,7 +733,7 @@ def confirmer_competences(analyse: list[dict]) -> None:
                                     st.error(str(erreur))
 
 
-def afficher_cv_adapte(resultat, chemin_pdf: str) -> None:
+def afficher_cv_adapte(resultat, chemin_pdf: str, nom_fichier: str) -> None:
     for alerte in resultat.get("alertes", []):
         st.warning(alerte)
     if resultat.get("conseil"):
@@ -741,8 +741,8 @@ def afficher_cv_adapte(resultat, chemin_pdf: str) -> None:
     if mots := resultat.get("mots_cles"):
         st.markdown("**Mots-clés de l'offre repris :** " + " ".join(f":blue-badge[{m}]" for m in mots))
     with open(chemin_pdf, "rb") as pdf:
-        st.download_button("⬇️ Télécharger le CV en PDF", pdf.read(), file_name=Path(chemin_pdf).name,
-                           mime="application/pdf", type="primary")
+        st.download_button(f"⬇️ Télécharger {nom_fichier}", pdf.read(), file_name=nom_fichier,
+                           mime="application/pdf", type="primary", key=f"dl-{chemin_pdf}")
     st.markdown("##### Ce qui a changé")
     for changement in resultat["changements"]:
         with st.container(border=True):
@@ -836,7 +836,8 @@ def page_cv() -> None:
                 colonnes[0].markdown(f"**{version['cible'][:60]}** · {date_lisible(version['date'])}")
                 if Path(version["chemin_pdf"]).exists():
                     with open(version["chemin_pdf"], "rb") as pdf:
-                        colonnes[1].download_button("⬇️ PDF", pdf.read(), file_name=Path(version["chemin_pdf"]).name,
+                        colonnes[1].download_button("⬇️ PDF", pdf.read(),
+                                                    file_name=cv_adapte.nom_fichier(version["offre_id"], version["cible"]),
                                                     mime="application/pdf", key=f"tous-{version['id']}")
                 else:
                     colonnes[1].caption("fichier supprimé")
@@ -851,7 +852,7 @@ def page_cv() -> None:
                     continue
                 afficher_cv_adapte({"changements": json.loads(version["changements"]),
                                     "alertes": json.loads(version["alertes"]), "conseil": version["conseil"]},
-                                   version["chemin_pdf"])
+                                   version["chemin_pdf"], cv_adapte.nom_fichier(offre_id))
 
 
 # ---------------------------------------------------------------- Page : profil

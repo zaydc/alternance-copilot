@@ -325,6 +325,8 @@ Interface : Streamlit (local)
   (contacts, email, LinkedIn, CV)
 - [x] Hunter : message clair quand aucune adresse n'est trouvée mais que le **format** est connu (cas des grands
   groupes, ex. orange-business.com), + bouton **🧩 Déduire** qui applique le format à un dirigeant puis vérifie l'adresse
+- [x] Nom de téléchargement lisible : `Crombez_Zayd_CV_Predilife.pdf` (identité lue dans la signature locale,
+  jamais envoyée à Claude ; cible = entreprise, sinon entreprise de l'offre, sinon intitulé)
 
 ## Sources
 - https://api.apprentissage.beta.gouv.fr/fr

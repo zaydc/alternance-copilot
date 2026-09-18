@@ -6,6 +6,7 @@
 
 import json
 import re
+import unicodedata
 from collections.abc import Callable
 from contextlib import closing
 from dataclasses import dataclass, field
@@ -208,3 +209,30 @@ def adapter(offre_id: str, progression: Callable[[str], None] = print) -> Result
         stockage.inserer(c, "cv_adaptes", {"offre_id": offre_id, "chemin_pdf": resultat.chemin_pdf, "changements": changements,
                                            "alertes": alertes, "conseil": adaptation.conseil, "date": stockage.maintenant()})
     return resultat
+
+
+def _en_mots(valeur: str) -> list[str]:
+    sans_accents = unicodedata.normalize("NFKD", valeur).encode("ascii", "ignore").decode()
+    return [mot.capitalize() for mot in re.findall(r"[A-Za-z0-9]+", sans_accents)]
+
+
+def nom_fichier(cible_id: str, cible: str | None = None) -> str:
+    """Nom de téléchargement lisible : « Crombez_Zayd_CV_Predilife.pdf ».
+
+    Le nom du candidat vient de la signature locale : il n'est jamais envoyé à Claude (minimisation).
+    """
+    from src.candidature import lire_signature  # import local : évite une dépendance circulaire
+
+    identite = _en_mots(lire_signature().splitlines()[0])[:3]
+    candidat = "_".join(reversed(identite[:2])) if len(identite) >= 2 else "CV"
+    if cible is None:
+        with closing(stockage.connecter()) as connexion:
+            ligne = connexion.execute(
+                """SELECT COALESCE(e.nom, x.entreprise, x.titre, o.entreprise, o.titre) FROM (SELECT ? AS id) c
+                   LEFT JOIN entreprises e ON 'ent-' || e.id = c.id
+                   LEFT JOIN offres_externes x ON x.id = c.id
+                   LEFT JOIN offres o ON o.id = c.id""",
+                (cible_id,),
+            ).fetchone()
+        cible = (ligne[0] if ligne else None) or "candidature"
+    return f"{candidat}_CV_{''.join(_en_mots(cible)[:3]) or 'Candidature'}.pdf"
