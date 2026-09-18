@@ -150,7 +150,7 @@ def adapter(offre_id: str, progression: Callable[[str], None] = print) -> Result
     nombres_connus = _nombres(json.dumps([s.texte or s.elements for s in liste_segments], ensure_ascii=False)) \
         | _nombres(profil.model_dump_json()) | _nombres(" ".join(c["resume_cv"] or "" for c in confirmees))
 
-    progression("✍️ Claude réécrit les textes du CV pour cette offre…")
+    progression("Claude réécrit les textes du CV pour cette offre…")
     zones = [{"id": s.id, "section": s.section, "type": s.type, **({"texte": s.texte, "longueur": len(s.texte)} if s.type == "texte"
               else {"elements": s.elements})} for s in liste_segments if s.modifiable]
     prompt = (
@@ -164,7 +164,7 @@ def adapter(offre_id: str, progression: Callable[[str], None] = print) -> Result
     retenues, alertes = _valider(adaptation, segments, autorisees, interdites, nombres_connus)
 
     for tentative in range(TENTATIVES_RACCOURCISSEMENT + 1):
-        progression("📐 Contrôle de la mise en page…")
+        progression("Contrôle de la mise en page…")
         document, _ = _appliquer(html_modele, retenues)
         problemes = {i: p for i, p in cv_modele.controler_mise_en_page(str(document), reference).items() if i in retenues}
         if not problemes:
@@ -181,7 +181,7 @@ def adapter(offre_id: str, progression: Callable[[str], None] = print) -> Result
                 del retenues[identifiant]
             document, _ = _appliquer(html_modele, retenues)
             break
-        progression(f"✂️ {len(textes_a_raccourcir)} texte(s) débordent : raccourcissement (essai {tentative + 1})…")
+        progression(f"{len(textes_a_raccourcir)} texte(s) débordent : raccourcissement (essai {tentative + 1})…")
         demande = [{"id": i, "texte": t, "longueur_actuelle": len(t), "longueur_cible": int(len(t) * 0.8),
                     "probleme": problemes[i]} for i, t in textes_a_raccourcir.items()]
         raccourcis = generer_json(json.dumps(demande, ensure_ascii=False, indent=1), SYSTEME_RACCOURCIR,
@@ -190,12 +190,12 @@ def adapter(offre_id: str, progression: Callable[[str], None] = print) -> Result
             if modif.id in textes_a_raccourcir and not (_nombres(modif.texte) - nombres_connus) and modif.texte.count("**") % 2 == 0:
                 retenues[modif.id] = (modif.texte.strip(), retenues[modif.id][1])
 
-    progression("🖨️ Création du PDF…")
+    progression("Création du PDF…")
     DOSSIER_CV.mkdir(parents=True, exist_ok=True)
     chemin_pdf = DOSSIER_CV / f"{datetime.now():%Y-%m-%d_%H%M%S}_{offre_id}.pdf"
-    cv_modele.imprimer_pdf(cv_segments.sans_marqueurs(document), chemin_pdf)
+    cv_modele.imprimer_pdf(cv_segments.sans_marqueurs(document), chemin_pdf, titre_document(), " ".join(identite()))
     if len(PdfReader(chemin_pdf).pages) != 1:
-        alertes.append("⚠️ Le PDF fait plus d'une page : vérifie l'aperçu.")
+        alertes.append("Le PDF fait plus d'une page : vérifie l'aperçu.")
 
     changements = []
     for identifiant, (valeur, pourquoi) in retenues.items():
@@ -214,6 +214,20 @@ def adapter(offre_id: str, progression: Callable[[str], None] = print) -> Result
 def _en_mots(valeur: str) -> list[str]:
     sans_accents = unicodedata.normalize("NFKD", valeur).encode("ascii", "ignore").decode()
     return [mot.capitalize() for mot in re.findall(r"[A-Za-z0-9]+", sans_accents)]
+
+
+def identite() -> tuple[str, str]:
+    """(prénom, nom) lus dans la signature locale, jamais envoyée à Claude."""
+    from src.candidature import lire_signature  # import local : évite une dépendance circulaire
+
+    mots = lire_signature().splitlines()[0].split()
+    return (mots[0], " ".join(mots[1:])) if len(mots) >= 2 else ("", "")
+
+
+def titre_document() -> str:
+    """« Crombez Zayd CV » : le titre affiché par le lecteur PDF."""
+    prenom, nom = identite()
+    return f"{nom} {prenom} CV".strip()
 
 
 def nom_fichier(cible_id: str, cible: str | None = None) -> str:

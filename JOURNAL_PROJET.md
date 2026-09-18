@@ -344,6 +344,17 @@ Interface : Streamlit (local)
 - Test réel (Therapixel) : l'email cite désormais PathoCollab avec la bonne formulation (« je participe
   actuellement à la reprise de… »), l'imagerie DICOM et le travail sur la sécurité JWT
 
+## Étape 19 — CV généraliste et métadonnées PDF ✅
+
+- Besoin : un CV **généraliste** à transmettre par recommandation (contact dans une banque), sans fermer de porte
+- Modifications faites **sans Claude** (aucun quota) : intitulé « DÉVELOPPEUR FULL STACK · DATA & IA (ALTERNANCE) »
+  et accroche élargie à l'automatisation de données et aux assistants IA (déjà prouvés par le CV) ;
+  la 1re accroche (331 caractères) débordait sur les coordonnées → détecté par le contrôle, version de 286 retenue
+- **Bug corrigé** : les PDF générés avaient pour titre `cv.html` et pour créateur `HeadlessChrome` (métadonnées
+  d'Edge). `cv_modele.definir_metadonnees()` fixe désormais titre « Crombez Zayd CV », auteur et sujet,
+  pour ce CV comme pour tous les CV adaptés (identité lue dans la signature locale)
+- Fichier : `data/Crombez_Zayd_CV.pdf`
+
 ## Sources
 - https://api.apprentissage.beta.gouv.fr/fr
 - https://code.claude.com/docs/en/authentication

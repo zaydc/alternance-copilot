@@ -14,6 +14,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from pypdf import PdfReader, PdfWriter
+
 from src.profil import DOSSIER_DATA
 
 CHEMIN_MODELE = DOSSIER_DATA / "cv_modele.html"
@@ -83,7 +85,20 @@ def _edge(arguments: list[str], dossier: Path) -> subprocess.CompletedProcess:
     )
 
 
-def imprimer_pdf(html: str, destination: Path) -> Path:
+def definir_metadonnees(chemin_pdf: Path, titre: str, auteur: str) -> None:
+    """Titre et auteur du PDF : c'est le titre qui s'affiche dans l'onglet du lecteur PDF du recruteur.
+
+    Sans ça, Edge inscrit le nom du fichier HTML temporaire (« cv.html ») et un créateur « HeadlessChrome ».
+    """
+    lecteur = PdfReader(chemin_pdf)
+    redacteur = PdfWriter(clone_from=lecteur)
+    redacteur.metadata = None  # on repart de zéro : ni nom de fichier temporaire ni navigateur automatisé
+    redacteur.add_metadata({"/Title": titre, "/Author": auteur, "/Subject": "Curriculum vitae"})
+    with open(chemin_pdf, "wb") as sortie:
+        redacteur.write(sortie)
+
+
+def imprimer_pdf(html: str, destination: Path, titre: str | None = None, auteur: str | None = None) -> Path:
     with tempfile.TemporaryDirectory() as dossier:
         source = Path(dossier) / "cv.html"
         source.write_text(html, encoding="utf-8")
@@ -91,6 +106,8 @@ def imprimer_pdf(html: str, destination: Path) -> Path:
                           f"--print-to-pdf={destination}", source.as_uri()], Path(dossier))
     if not destination.exists():
         raise ErreurModele(f"Edge n'a pas produit le PDF : {resultat.stderr.decode(errors='replace')[:300]}")
+    if titre:
+        definir_metadonnees(destination, titre, auteur or "")
     return destination
 
 

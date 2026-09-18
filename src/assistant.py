@@ -169,7 +169,7 @@ Règles :
   la recherche web pour compléter sur l'entreprise (actualité, produits, stack). Cite tes sources web.
 - N'invente rien sur l'entreprise ni sur le parcours du candidat.
 - Ne l'aide jamais à mentir ou à embellir son expérience : aide-le à valoriser ce qu'il a vraiment fait.
-- Réponses courtes et structurées (listes, gras), adaptées à une lecture à l'écran."""
+- Réponses courtes et structurées (listes, gras), adaptées à une lecture à l'écran, sans emojis."""
 
 MODES = {
     "coach": COMMUN + """
@@ -186,7 +186,7 @@ Mode simulation d'entretien : tu joues le recruteur de l'entreprise ciblée.
    un projet de son CV en profondeur, question comportementale (méthode STAR), gestion du rythme école / entreprise,
    « avez-vous des questions ? ».
 3. Après chaque réponse, avant la question suivante, donne un retour bref entre crochets :
-   [✅ ce qui fonctionne · ⚠️ à améliorer · 💡 une meilleure formulation en une phrase].
+   [**Bien :** ce qui fonctionne · **À améliorer :** ce qui manque · **Mieux :** une meilleure formulation en une phrase].
 4. Quand il écrit « bilan » ou après la dernière question : sors du rôle et fais un bilan
    (note sur 10 pour : clarté, motivation, technique, connaissance de l'entreprise) et 3 axes de travail prioritaires.""",
 }
