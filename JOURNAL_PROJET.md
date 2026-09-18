@@ -325,6 +325,8 @@ Interface : Streamlit (local)
   (contacts, email, LinkedIn, CV)
 - [x] Hunter : message clair quand aucune adresse n'est trouvée mais que le **format** est connu (cas des grands
   groupes, ex. orange-business.com), + bouton **🧩 Déduire** qui applique le format à un dirigeant puis vérifie l'adresse
+- [x] La fiche entreprise **reste ouverte** après une action : la sélection d'un `st.dataframe` est perdue à chaque
+  relance du script, l'entreprise choisie est donc mémorisée (`session_state`) et retrouvée par son id
 - [x] Bouton **« 📤 J'ai postulé »** sur la fiche entreprise : enregistre une candidature envoyée hors de
   l'application (formulaire du site, LinkedIn, email manuel…) sans exiger d'adresse, pour que les relances suivent
 - [x] Nom de téléchargement lisible : `Crombez_Zayd_CV_Predilife.pdf` (identité lue dans la signature locale,

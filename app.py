@@ -218,14 +218,17 @@ def page_entreprises() -> None:
          "Distance (km)": e["distance_km"], "Email": "✉️" if e["nb_emails"] else ""}
         for e in entreprises
     ]
-    selection = st.dataframe(tableau, hide_index=True, width="stretch", height=320,
+    selection = st.dataframe(tableau, hide_index=True, width="stretch", height=320, key="tableau_entreprises",
                              on_select="rerun", selection_mode="single-row")
     lignes = selection.selection.rows
-    if not lignes:
+    # La sélection du tableau est perdue à chaque action (recherche, email, CV...) : on retient l'entreprise choisie
+    if lignes:
+        st.session_state.entreprise_choisie = entreprises[lignes[0]]["id"]
+    entreprise = next((e for e in entreprises if e["id"] == st.session_state.get("entreprise_choisie")), None)
+    if entreprise is None:
         st.caption(f"{len(entreprises)} entreprises (écoles et CFA exclus) · clique sur une ligne pour préparer un email")
         return
 
-    entreprise = entreprises[lignes[0]]
     with st.container(border=True):
         st.subheader(entreprise["nom"])
         st.caption(f"{entreprise['secteur']} · {TAILLES.get(entreprise['taille'], '?')} salariés · "
