@@ -146,6 +146,17 @@ CREATE TABLE IF NOT EXISTS recherches_hunter (
     date      TEXT NOT NULL
 );
 
+-- Offres trouvées ailleurs (LinkedIn, site d'entreprise...) et collées par l'utilisateur.
+-- Table séparée des offres de l'API : elles ne doivent pas fausser la notion de « dernière collecte ».
+CREATE TABLE IF NOT EXISTS offres_externes (
+    id          TEXT PRIMARY KEY,  -- « ext-<empreinte du texte> »
+    titre       TEXT NOT NULL,
+    entreprise  TEXT,
+    lien        TEXT,
+    texte       TEXT NOT NULL,
+    date        TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS relances (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     candidature_id  INTEGER NOT NULL REFERENCES candidatures(id),
@@ -487,3 +498,19 @@ def enregistrer_hunter(connexion: sqlite3.Connection, cle: str, resultat: dict) 
 
 def hunter_par_entreprise(connexion: sqlite3.Connection, entreprise_id: str) -> list[sqlite3.Row]:
     return connexion.execute("SELECT * FROM recherches_hunter WHERE cle LIKE ?", (f"{entreprise_id}|%",)).fetchall()
+
+
+def enregistrer_offre_externe(connexion: sqlite3.Connection, offre: dict) -> None:
+    colonnes = list(offre) + ["date"]
+    with connexion:
+        connexion.execute(
+            f"INSERT OR REPLACE INTO offres_externes ({', '.join(colonnes)}) VALUES ({', '.join('?' for _ in colonnes)})",
+            [*offre.values(), maintenant()])
+
+
+def offres_externes(connexion: sqlite3.Connection) -> list[sqlite3.Row]:
+    return connexion.execute("SELECT * FROM offres_externes ORDER BY date DESC").fetchall()
+
+
+def offre_externe(connexion: sqlite3.Connection, offre_id: str) -> sqlite3.Row | None:
+    return connexion.execute("SELECT * FROM offres_externes WHERE id = ?", (offre_id,)).fetchone()

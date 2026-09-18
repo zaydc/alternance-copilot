@@ -294,6 +294,16 @@ Interface : Streamlit (local)
   - **RGPD article 14** : l'email indique la provenance de l'adresse et propose de ne plus être recontacté
     (phrase ajoutée automatiquement dès qu'une adresse Hunter existe)
 
+## Étape 15 — Offres collées à la main ✅
+
+- Demande : coller une offre trouvée ailleurs (LinkedIn, site d'entreprise) et obtenir le CV adapté
+- Table **séparée** `offres_externes` (id « ext-<empreinte> ») : insérer ces offres dans `offres` aurait faussé
+  `MAX(derniere_vue)`, donc la notion d'offre active de toutes les autres requêtes
+- `assistant.detail_offre()` reconnaît le préfixe `ext-` → analyse des compétences, CV adapté **et**
+  simulation d'entretien fonctionnent sur une offre collée sans autre changement
+- Page CV adapté : formulaire repliable (intitulé, entreprise, lien, texte), l'offre enregistrée est
+  sélectionnée automatiquement ; refus si le texte fait moins de 100 caractères
+
 ## Sources
 - https://api.apprentissage.beta.gouv.fr/fr
 - https://code.claude.com/docs/en/authentication

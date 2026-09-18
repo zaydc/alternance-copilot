@@ -52,7 +52,17 @@ def chercher_offres(mots_cles: str) -> str:
     )
 
 
+PREFIXE_EXTERNE = "ext-"  # offre collée par l'utilisateur plutôt que collectée via l'API
+
+
 def detail_offre(offre_id: str) -> str:
+    if offre_id.startswith(PREFIXE_EXTERNE):
+        with closing(stockage.connecter()) as c:
+            offre = stockage.offre_externe(c, offre_id)
+        if offre is None:
+            return f"Aucune offre collée avec l'id {offre_id}."
+        return (f"Titre : {offre['titre']}\nEntreprise : {offre['entreprise'] or 'non communiquée'}\n"
+                f"Lien : {offre['lien'] or '-'}\nOffre copiée par le candidat :\n\n{offre['texte']}")
     with closing(stockage.connecter()) as c:
         offre = c.execute("SELECT * FROM offres WHERE id = ?", (offre_id,)).fetchone()
         notation = c.execute("SELECT * FROM notations WHERE offre_id = ? ORDER BY date DESC LIMIT 1", (offre_id,)).fetchone()

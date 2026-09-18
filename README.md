@@ -21,7 +21,7 @@ fou à retrouver qui on a relancé et quand.
 | 🏢 **Candidatures spontanées** | Les entreprises du numérique susceptibles de recruter : qui contacter, un email personnalisé, une note LinkedIn |
 | 📬 **Suivi et relances** | L'état de chaque candidature, et la relance rédigée automatiquement 7 jours après l'envoi |
 | 🎤 **Préparation d'entretien** | Un chatbot qui joue le recruteur de l'entreprise visée, avec un retour après chaque réponse |
-| 📄 **CV adapté** | Mon CV réécrit pour une offre précise, dans le même design, exporté en PDF |
+| 📄 **CV adapté** | Mon CV réécrit pour une offre précise (collectée ou collée depuis LinkedIn), dans le même design, exporté en PDF |
 | 👤 **Profil** | Import du CV, profil extrait, signature des emails |
 
 Chaque matin, une tâche planifiée Windows collecte les nouvelles offres. La notation par Claude, elle, ne tourne

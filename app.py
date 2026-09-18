@@ -4,6 +4,7 @@ Lancement : double-cliquer sur « Alternance Copilot.bat », ou depuis la racine
     .venv\\Scripts\\streamlit.exe run app.py
 """
 
+import hashlib
 import json
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
@@ -524,6 +525,9 @@ def cibles_possibles() -> dict[str, str | None]:
         for cand in stockage.candidatures(c):
             reference = f"offre id={cand['offre_id']}" if cand["offre_id"] else "candidature spontanée"
             options[f"📬 {cand['nom']}"] = f"{cand['nom']} ({reference}, envoyée le {cand['date_envoi'][:10]}, statut {cand['statut']})"
+        for offre in stockage.offres_externes(c):
+            options[f"✂️ {offre['titre'][:70]}"] = (f"Offre id={offre['id']} : {offre['titre']} "
+                                                   f"({offre['entreprise'] or 'entreprise non précisée'}, offre collée par le candidat)")
         for offre in stockage.offres_actives(c):
             score = f" · {offre['score']}/100" if offre["score"] is not None else ""
             options.setdefault(f"📋 {offre['titre'][:70]}{score}",
@@ -681,6 +685,30 @@ def afficher_cv_adapte(resultat, chemin_pdf: str) -> None:
             st.caption(f"→ {changement['pourquoi']}")
 
 
+def coller_une_offre() -> None:
+    """Offre trouvée ailleurs (LinkedIn, site d'entreprise…) : elle est ensuite traitée comme une offre collectée."""
+    with st.expander("✂️ Coller une offre trouvée ailleurs"):
+        with st.form("offre-collee", border=False):
+            colonnes = st.columns(2)
+            titre = colonnes[0].text_input("Intitulé du poste *", placeholder="Alternance développeur full stack")
+            entreprise = colonnes[1].text_input("Entreprise", placeholder="Nom de l'entreprise")
+            lien = st.text_input("Lien vers l'offre", placeholder="https://...")
+            texte = st.text_area("Texte de l'offre *", height=220,
+                                 placeholder="Colle ici l'annonce complète : missions, profil recherché, technologies…")
+            if st.form_submit_button("Enregistrer cette offre", type="primary"):
+                if not titre.strip() or len(texte.strip()) < 100:
+                    st.error("Il faut au moins l'intitulé et le texte de l'offre (100 caractères minimum).")
+                    return
+                identifiant = assistant.PREFIXE_EXTERNE + hashlib.sha256(texte.encode("utf-8")).hexdigest()[:10]
+                with connexion() as c:
+                    stockage.enregistrer_offre_externe(c, {
+                        "id": identifiant, "titre": titre.strip(), "entreprise": entreprise.strip() or None,
+                        "lien": lien.strip() or None, "texte": texte.strip()})
+                st.session_state["cv-offre"] = f"✂️ {titre.strip()[:60]}" + (f" · {entreprise.strip()}" if entreprise.strip() else "")
+                st.toast("Offre enregistrée : analyse les compétences, puis génère le CV.")
+                st.rerun()
+
+
 def page_cv() -> None:
     st.title("📄 CV adapté à une offre")
     if not profil_en_cache():
@@ -690,13 +718,16 @@ def page_cv() -> None:
         st.warning("Il manque le **modèle HTML** de ton CV (l'export de ton outil de design). Va dans la page **Profil**.")
         return
 
+    coller_une_offre()
     with connexion() as c:
-        offres = {f"{o['titre'][:70]}" + (f" · {o['score']}/100" if o["score"] is not None else ""): o["id"]
-                  for o in stockage.offres_actives(c)}
+        offres = {f"✂️ {o['titre'][:60]}" + (f" · {o['entreprise']}" if o["entreprise"] else ""): o["id"]
+                  for o in stockage.offres_externes(c)}
+        offres |= {f"{o['titre'][:70]}" + (f" · {o['score']}/100" if o["score"] is not None else ""): o["id"]
+                   for o in stockage.offres_actives(c)}
     if not offres:
-        st.info("Aucune offre en base : lance une collecte.")
+        st.info("Aucune offre : lance une collecte, ou colle une offre ci-dessus.")
         return
-    libelle = st.selectbox("Offre visée", list(offres))
+    libelle = st.selectbox("Offre visée", list(offres), key="cv-offre")
     offre_id = offres[libelle]
 
     with connexion() as c:
