@@ -17,6 +17,7 @@ from pypdf import PdfReader
 from src import (assistant, automatisation, candidature, collecte, competences, contacts, cv_adapte, cv_modele,
                  hunter, notation, relance, stockage)
 from src.llm_client import ErreurLLM
+from src import profil as profil_module
 from src.profil import CHEMIN_CV, charger_profil, profil_en_cache
 
 load_dotenv()
@@ -932,6 +933,17 @@ def page_profil() -> None:
         st.markdown("##### Projets")
         for projet in profil.projets:
             st.markdown(f"**{projet.nom}** ({projet.contexte}) · {', '.join(projet.technologies)}\n- {projet.resultat}")
+
+    st.divider()
+    st.markdown("##### Ce que ton CV ne dit pas encore")
+    st.caption("Projet en cours, disponibilité, appétences… Utilisé pour les emails, la notation des offres, "
+               "le chatbot d'entretien et le CV adapté. Reste sur ton PC, jamais versionné.")
+    notes = st.text_area("Compléments", profil_module.complements(), height=240, label_visibility="collapsed",
+                         placeholder="Ex. : je reprends cette année une plateforme d'imagerie médicale en microservices…")
+    if st.button("Enregistrer les compléments"):
+        profil_module.enregistrer_complements(notes)
+        st.toast("Compléments enregistrés : les offres seront renotées avec ce profil.")
+        st.rerun()
 
     st.divider()
     st.markdown("##### Modèle de CV (pour le CV adapté)")

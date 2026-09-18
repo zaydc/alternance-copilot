@@ -18,6 +18,8 @@ from src.llm_client import generer_json
 DOSSIER_DATA = Path(__file__).resolve().parent.parent / "data"
 CHEMIN_CV = DOSSIER_DATA / "cv.pdf"
 CHEMIN_PROFIL = DOSSIER_DATA / "profil.json"
+# Ce que le CV ne dit pas encore : projet en cours, contexte, appétences. Rédigé à la main, jamais versionné.
+CHEMIN_COMPLEMENTS = DOSSIER_DATA / "complements_profil.md"
 
 
 class Experience(BaseModel):
@@ -61,6 +63,24 @@ def empreinte(texte: str) -> str:
     return hashlib.sha256(texte.encode("utf-8")).hexdigest()[:16]
 
 
+def complements() -> str:
+    """Notes libres qui complètent le CV (projet repris cette année, disponibilité, centres d'intérêt...)."""
+    return CHEMIN_COMPLEMENTS.read_text(encoding="utf-8").strip() if CHEMIN_COMPLEMENTS.exists() else ""
+
+
+def enregistrer_complements(texte: str) -> None:
+    CHEMIN_COMPLEMENTS.parent.mkdir(parents=True, exist_ok=True)
+    CHEMIN_COMPLEMENTS.write_text(texte.strip() + "\n", encoding="utf-8")
+
+
+def profil_complet(profil: Profil) -> str:
+    """Profil JSON + notes complémentaires, tel qu'il est envoyé à Claude."""
+    texte = profil.model_dump_json(indent=1)
+    if notes := complements():
+        texte += f"\n\nÉléments complémentaires fournis par le candidat (hors CV, tout aussi vrais) :\n{notes}"
+    return texte
+
+
 def profil_en_cache(chemin_cv: Path = CHEMIN_CV) -> tuple[Profil, str] | None:
     """Profil déjà extrait du CV actuel, sans appeler Claude. None si pas de CV ou CV modifié depuis."""
     if not chemin_cv.exists() or not CHEMIN_PROFIL.exists():
@@ -69,7 +89,7 @@ def profil_en_cache(chemin_cv: Path = CHEMIN_CV) -> tuple[Profil, str] | None:
     sauvegarde = json.loads(CHEMIN_PROFIL.read_text(encoding="utf-8"))
     if sauvegarde["hash_cv"] != hash_cv:
         return None
-    return Profil.model_validate(sauvegarde["profil"]), hash_cv
+    return Profil.model_validate(sauvegarde["profil"]), empreinte(hash_cv + complements())
 
 
 def charger_profil(chemin_cv: Path = CHEMIN_CV) -> tuple[Profil, str]:
@@ -82,7 +102,7 @@ def charger_profil(chemin_cv: Path = CHEMIN_CV) -> tuple[Profil, str]:
     profil = generer_json(f"Voici le texte du CV :\n\n{texte}", SYSTEME, Profil, effort="low")
     sauvegarde = {"hash_cv": hash_cv, "profil": profil.model_dump()}
     CHEMIN_PROFIL.write_text(json.dumps(sauvegarde, ensure_ascii=False, indent=2), encoding="utf-8")
-    return profil, hash_cv
+    return profil, empreinte(hash_cv + complements())
 
 
 if __name__ == "__main__":

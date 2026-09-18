@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 
 from src import stockage
 from src.llm_client import generer_json
-from src.profil import charger_profil
+from src.profil import charger_profil, profil_complet
 
 TAILLE_LOT = 10
 LONGUEUR_MAX_DESCRIPTION = 4000  # limite la taille du prompt (quota Pro)
@@ -82,7 +82,7 @@ def noter_lot(profil_json: str, offres: list) -> list[NoteOffre]:
 def noter_offres(progression: Callable[[str], None] = print) -> int:
     """Note les offres pas encore en cache. `progression` reçoit les messages d'avancement. Renvoie le nombre de notes."""
     profil, hash_cv = charger_profil()
-    profil_json = profil.model_dump_json(indent=1)
+    profil_json = profil_complet(profil)
     total = 0
 
     with closing(stockage.connecter()) as connexion:

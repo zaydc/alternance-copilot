@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from src import contacts, stockage
 from src.llm_client import OUTILS_WEB, ErreurLLM, generer_json
-from src.profil import DOSSIER_DATA, charger_profil
+from src.profil import DOSSIER_DATA, charger_profil, profil_complet
 
 # Coordonnées ajoutées en fin d'email : jamais envoyées à Claude (minimisation), jamais dans Git (data/)
 CHEMIN_SIGNATURE = DOSSIER_DATA / "signature.txt"
@@ -84,7 +84,7 @@ def generer_email(entreprise, profil_json: str) -> EmailSpontane:
 def rediger_email(connexion, entreprise) -> EmailSpontane:
     """Génère l'email pour cette entreprise et l'historise dans la table emails."""
     profil, _ = charger_profil()
-    email = generer_email(entreprise, profil.model_dump_json(indent=1))
+    email = generer_email(entreprise, profil_complet(profil))
     stockage.enregistrer_email(
         connexion,
         {"entreprise_id": entreprise["id"], **email.model_dump(), "date": stockage.maintenant()},

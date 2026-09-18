@@ -332,6 +332,18 @@ Interface : Streamlit (local)
 - [x] Nom de téléchargement lisible : `Crombez_Zayd_CV_Predilife.pdf` (identité lue dans la signature locale,
   jamais envoyée à Claude ; cible = entreprise, sinon entreprise de l'offre, sinon intitulé)
 
+## Étape 18 — Profil complémentaire (hors CV) ✅
+
+- Constat d'usage : l'email pour Therapixel (IA en imagerie médicale) ne mentionnait pas le projet PathoCollab,
+  simplement parce qu'il n'est pas encore dans le CV
+- [x] `data/complements_profil.md` (local, ignoré par Git) : projet en cours, disponibilité, appétences
+  - Éditable dans la page **Profil**, injecté dans **tous** les prompts via `profil.profil_complet()` :
+    emails, notation, analyse des compétences, CV adapté, chatbot d'entretien
+  - L'empreinte du profil (clé de cache des notations) tient compte des compléments : modifier les notes
+    entraîne une renotation, ce qui est voulu
+- Test réel (Therapixel) : l'email cite désormais PathoCollab avec la bonne formulation (« je participe
+  actuellement à la reprise de… »), l'imagerie DICOM et le travail sur la sécurité JWT
+
 ## Sources
 - https://api.apprentissage.beta.gouv.fr/fr
 - https://code.claude.com/docs/en/authentication

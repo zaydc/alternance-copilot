@@ -18,7 +18,7 @@ from pypdf import PdfReader
 from src import competences, cv_modele, cv_segments, stockage
 from src.assistant import contexte_cible
 from src.llm_client import generer_json
-from src.profil import DOSSIER_DATA, charger_profil
+from src.profil import DOSSIER_DATA, charger_profil, profil_complet
 
 DOSSIER_CV = DOSSIER_DATA / "cv_adaptes"
 TENTATIVES_RACCOURCISSEMENT = 2
@@ -154,7 +154,7 @@ def adapter(offre_id: str, progression: Callable[[str], None] = print) -> Result
     zones = [{"id": s.id, "section": s.section, "type": s.type, **({"texte": s.texte, "longueur": len(s.texte)} if s.type == "texte"
               else {"elements": s.elements})} for s in liste_segments if s.modifiable]
     prompt = (
-        f"## Cible\n{contexte_cible(offre_id)}\n\n## Profil du candidat\n{profil.model_dump_json(indent=1)}\n\n"
+        f"## Cible\n{contexte_cible(offre_id)}\n\n## Profil du candidat\n{profil_complet(profil)}\n\n"
         f"## Compétences confirmées (hors CV)\n"
         + ("\n".join(f"- {c['nom']} : {c['resume_cv']}" for c in confirmees) or "aucune")
         + f"\n\n## Compétences NON confirmées (interdites)\n{', '.join(interdites) or 'aucune'}\n\n"

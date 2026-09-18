@@ -22,7 +22,7 @@ fou à retrouver qui on a relancé et quand.
 | 📬 **Suivi et relances** | L'état de chaque candidature, et la relance rédigée automatiquement 7 jours après l'envoi |
 | 🎤 **Préparation d'entretien** | Un chatbot qui joue le recruteur de l'entreprise visée, avec un retour après chaque réponse |
 | 📄 **CV adapté** | Mon CV réécrit pour une cible précise — offre collectée, offre collée depuis LinkedIn ou **entreprise visée en candidature spontanée** — dans le même design, exporté en PDF |
-| 👤 **Profil** | Import du CV, profil extrait, signature des emails |
+| 👤 **Profil** | Import du CV, profil extrait, **compléments hors CV** (projet en cours, disponibilité), signature des emails |
 
 Chaque matin, une tâche planifiée Windows collecte les nouvelles offres. La notation par Claude, elle, ne tourne
 que le lundi, le mercredi et le vendredi, pour ménager mon quota.
