@@ -514,3 +514,18 @@ def offres_externes(connexion: sqlite3.Connection) -> list[sqlite3.Row]:
 
 def offre_externe(connexion: sqlite3.Connection, offre_id: str) -> sqlite3.Row | None:
     return connexion.execute("SELECT * FROM offres_externes WHERE id = ?", (offre_id,)).fetchone()
+
+
+def tous_cv_adaptes(connexion: sqlite3.Connection, limite: int = 12) -> list[sqlite3.Row]:
+    """Derniers CV générés, toutes cibles confondues, avec le nom de la cible."""
+    return connexion.execute(
+        """
+        SELECT v.*, COALESCE(e.nom, x.titre, o.titre, v.offre_id) AS cible
+        FROM cv_adaptes v
+        LEFT JOIN entreprises e ON 'ent-' || e.id = v.offre_id
+        LEFT JOIN offres_externes x ON x.id = v.offre_id
+        LEFT JOIN offres o ON o.id = v.offre_id
+        ORDER BY v.id DESC LIMIT ?
+        """,
+        (limite,),
+    ).fetchall()

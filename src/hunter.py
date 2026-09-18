@@ -8,6 +8,7 @@ indiquer d'où elle vient et permettre de refuser d'être recontacté (RGPD, art
 import json
 import os
 import re
+import unicodedata
 from contextlib import closing
 from urllib.parse import urlparse
 
@@ -113,3 +114,34 @@ def format_lisible(pattern: str | None) -> str:
     if not pattern:
         return "inconnu"
     return re.sub(r"\{(\w+)\}", lambda m: {"first": "prenom", "last": "nom", "f": "p", "l": "n"}.get(m.group(1), m.group(1)), pattern)
+
+
+def format_connu(entreprise_id: str) -> str | None:
+    """Format des adresses de l'entreprise (ex. « {first}.{last} »), s'il a déjà été trouvé."""
+    with closing(stockage.connecter()) as connexion:
+        for recherche in stockage.hunter_par_entreprise(connexion, entreprise_id):
+            if "domain-search" in recherche["cle"] and (motif := json.loads(recherche["resultat"]).get("pattern")):
+                return motif
+    return None
+
+
+def construire_adresse(motif: str, prenom: str, nom: str, domaine_entreprise: str) -> str:
+    """Applique le format de l'entreprise à un nom : « {first}.{last} » + Olivier Martin → olivier.martin@…"""
+    def sans_accents(valeur: str) -> str:
+        plat = unicodedata.normalize("NFKD", valeur).encode("ascii", "ignore").decode()
+        return re.sub(r"[^a-z]", "", plat.lower())
+
+    prenom, nom = sans_accents(prenom), sans_accents(nom)
+    parties = {"first": prenom, "last": nom, "f": prenom[:1], "l": nom[:1]}
+    return re.sub(r"\{(\w+)\}", lambda m: parties.get(m.group(1), ""), motif) + f"@{domaine_entreprise}"
+
+
+def verifier_et_retenir(entreprise_id: str, adresse: str, prenom: str, nom: str) -> dict:
+    """Vérifie une adresse déduite et la conserve : elle apparaîtra ensuite comme les autres."""
+    verification = verifier(adresse)
+    resultat = {"email": adresse, "score": verification.get("score") or 0, "first_name": prenom, "last_name": nom,
+                "position": "adresse déduite du format de l'entreprise",
+                "verification": {"status": verification.get("status")}, "sources": verification.get("sources") or []}
+    with closing(stockage.connecter()) as connexion:
+        stockage.enregistrer_hunter(connexion, f"{entreprise_id}|deduite|{adresse}".lower(), resultat)
+    return resultat

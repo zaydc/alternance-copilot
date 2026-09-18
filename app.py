@@ -341,9 +341,14 @@ def afficher_hunter(entreprise, personnes: list[dict], email) -> None:
                      "invalid": "❌ invalide", "webmail": "⚠️ adresse personnelle"}.get(adresse["statut"], "❔ inconnu")
         st.markdown(f"- ✉️ `{adresse['email']}` · {adresse['poste'] or 'poste inconnu'} · "
                     f"confiance {adresse['score']}/100 · {fiabilite}")
-    if hunter.resultats_connus(entreprise["id"]):
+    trouvees = hunter.resultats_connus(entreprise["id"])
+    motif = hunter.format_connu(entreprise["id"])
+    if trouvees:
         st.caption(f"⚖️ RGPD : ces adresses ne viennent pas de la personne. La phrase « {hunter.MENTION_RGPD} » "
                    "est ajoutée à la fin de l'email.")
+    elif motif:
+        st.info(f"Hunter n'a trouvé aucune adresse publique pour cette entreprise, mais connaît son format : "
+                f"**{hunter.format_lisible(motif)}@{domaine or '…'}**. Déduis l'adresse d'un dirigeant ci-dessous.")
 
     # Sans recherche préalable, le domaine est inconnu : on le demande (gratuit tant qu'on ne cherche pas)
     domaine = st.text_input("Domaine de l'entreprise", value=domaine or "", key=f"hunter-domaine-saisi-{entreprise['id']}",
@@ -355,7 +360,7 @@ def afficher_hunter(entreprise, personnes: list[dict], email) -> None:
     noms = {f"{p['prenoms'].split(' ')[0]} {p['nom']}": p for p in personnes}
     choix = colonnes[0].selectbox("Chercher l'adresse de", list(noms), key=f"hunter-nom-{entreprise['id']}",
                                   index=None, placeholder="Un dirigeant" if noms else "Aucun dirigeant connu")
-    actions = colonnes[1].columns(2)
+    actions = colonnes[1].columns(3)
     if actions[0].button("🔎 Cette personne", key=f"hunter-personne-{entreprise['id']}", disabled=not choix,
                          help="1 crédit si une adresse est trouvée"):
         with st.spinner(f"Recherche sur {domaine}..."):
@@ -375,6 +380,21 @@ def afficher_hunter(entreprise, personnes: list[dict], email) -> None:
                 quota_hunter.clear()
                 st.toast(f"Format des adresses : {hunter.format_lisible(resultat.get('pattern'))}")
                 st.rerun()
+            except hunter.ErreurHunter as erreur:
+                st.error(str(erreur))
+    if motif and actions[2].button("🧩 Déduire", key=f"hunter-deduire-{entreprise['id']}", disabled=not choix,
+                                   help=f"Applique le format « {hunter.format_lisible(motif)} » au nom choisi, "
+                                        "puis vérifie l'adresse (1 vérification, pas de recherche)"):
+        personne = noms[choix]
+        adresse = hunter.construire_adresse(motif, personne["prenoms"].split(" ")[0], personne["nom"], domaine)
+        with st.spinner(f"Vérification de {adresse}..."):
+            try:
+                resultat = hunter.verifier_et_retenir(entreprise["id"], adresse, personne["prenoms"], personne["nom"])
+                quota_hunter.clear()
+                if resultat["verification"]["status"] == "invalid":
+                    st.error(f"{adresse} : adresse invalide, ne l'utilise pas.")
+                else:
+                    st.rerun()
             except hunter.ErreurHunter as erreur:
                 st.error(str(erreur))
     st.caption(f"Crédits restants ce mois : {quota['recherches']} recherches · {quota['verifications']} vérifications")
@@ -762,8 +782,22 @@ def page_cv() -> None:
                 statut.update(label="Échec", state="error")
                 st.error(str(erreur))
 
+    with connexion() as c:
+        tous = stockage.tous_cv_adaptes(c)
+    if tous:
+        with st.expander(f"📁 Tous tes CV générés ({len(tous)})"):
+            for version in tous:
+                colonnes = st.columns([4, 2])
+                colonnes[0].markdown(f"**{version['cible'][:60]}** · {date_lisible(version['date'])}")
+                if Path(version["chemin_pdf"]).exists():
+                    with open(version["chemin_pdf"], "rb") as pdf:
+                        colonnes[1].download_button("⬇️ PDF", pdf.read(), file_name=Path(version["chemin_pdf"]).name,
+                                                    mime="application/pdf", key=f"tous-{version['id']}")
+                else:
+                    colonnes[1].caption("fichier supprimé")
+
     if precedents:
-        st.subheader("Versions générées")
+        st.subheader("Versions générées pour cette cible")
         for version in precedents:
             with st.expander(f"{date_lisible(version['date'])}" + (" · dernière" if version is precedents[0] else ""),
                              expanded=version is precedents[0]):
