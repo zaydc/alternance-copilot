@@ -243,6 +243,7 @@ def page_entreprises() -> None:
         for envoyee in envoyees:
             st.success(f"📬 Candidature envoyée le {date_lisible(envoyee['date_envoi'])} "
                        f"({envoyee['canal']} : {envoyee['destinataire']}) · statut : **{envoyee['statut']}**")
+        marquer_postule_hors_app(entreprise)
 
         st.caption("Un CV adapté à cette entreprise se génère dans la page **📄 CV adapté** "
                    "(elle y apparaît une fois la recherche faite).")
@@ -456,6 +457,30 @@ def afficher_cv_entreprise(entreprise, email) -> None:
                            derniere["chemin_pdf"], cv_adapte.nom_fichier(cible, entreprise["nom"]))
     else:
         st.warning("Le fichier PDF a été supprimé : regénère-le.")
+
+
+# Candidature envoyée sans passer par l'application : le canal suffit, pas besoin de destinataire
+CANAUX_HORS_APP = {
+    "Formulaire du site": ("formulaire", "formulaire du site"),
+    "LinkedIn": ("linkedin", "candidature LinkedIn"),
+    "Email envoyé à la main": ("email", "email hors application"),
+    "Plateforme d'offres": ("offre", "plateforme de l'offre"),
+    "Autre": ("autre", "non précisé"),
+}
+
+
+def marquer_postule_hors_app(entreprise) -> None:
+    """Enregistre une candidature déjà envoyée ailleurs, pour que les relances suivent quand même."""
+    with st.popover("📤 J'ai postulé", help="Enregistre la candidature sans email, pour suivre les relances"):
+        choix = st.radio("Comment as-tu postulé ?", list(CANAUX_HORS_APP), key=f"canal-{entreprise['id']}")
+        if st.button("Enregistrer la candidature", key=f"postule-{entreprise['id']}", type="primary"):
+            canal, destinataire = CANAUX_HORS_APP[choix]
+            with connexion() as c:
+                stockage.enregistrer_candidature(c, {
+                    "entreprise_id": entreprise["id"], "nom": entreprise["nom"],
+                    "destinataire": destinataire, "canal": canal})
+            st.toast(f"Candidature enregistrée : relance proposée dans {stockage.DELAI_RELANCE_JOURS} jours")
+            st.rerun()
 
 
 def marquer_envoye(entreprise, email, canal: str, suggestions: list[str]) -> None:
