@@ -257,7 +257,8 @@ def page_entreprises() -> None:
                     st.error(str(erreur))
 
         email = precedents[0] if precedents else None
-        onglet_contacts, onglet_email, onglet_linkedin = st.tabs(["👥 Qui contacter", "✉️ Email", "💼 LinkedIn"])
+        onglet_contacts, onglet_email, onglet_linkedin, onglet_cv = st.tabs(
+            ["👥 Qui contacter", "✉️ Email", "💼 LinkedIn", "📄 CV adapté"])
         with onglet_contacts:
             afficher_contacts(entreprise, email)
         with onglet_email:
@@ -279,6 +280,8 @@ def page_entreprises() -> None:
                 marquer_envoye(entreprise, email, "email", adresses)
         with onglet_linkedin:
             afficher_linkedin(entreprise, email)
+        with onglet_cv:
+            afficher_cv_entreprise(entreprise, email)
 
 
 @st.cache_data(ttl=24 * 3600, show_spinner=False)
@@ -411,6 +414,48 @@ def afficher_linkedin(entreprise, email) -> None:
         st.code(email["note_linkedin"], language=None, wrap_lines=True)
         st.caption(f"{len(email['note_linkedin'])} / 300 caractères")
         marquer_envoye(entreprise, email, "linkedin", [])
+
+
+def afficher_cv_entreprise(entreprise, email) -> None:
+    """CV adapté à cette entreprise, pour une candidature spontanée : même moteur que la page « CV adapté »."""
+    cible = assistant.PREFIXE_ENTREPRISE + entreprise["id"]
+    if not profil_en_cache():
+        st.info("Importe d'abord ton CV dans la page **Profil**.")
+        return
+    if not cv_modele.CHEMIN_MODELE.exists():
+        st.warning("Il manque le **modèle HTML** de ton CV (page **Profil**).")
+        return
+    if not email:
+        st.info("Lance d'abord **✨ Trouver les contacts et rédiger** : le CV s'appuie sur cette recherche "
+                "pour parler de l'entreprise.")
+        return
+
+    with connexion() as c:
+        versions = stockage.cv_adaptes(c, cible)
+    libelle = "🔁 Regénérer le CV" if versions else "✨ Générer le CV adapté à cette entreprise"
+    if st.button(libelle, type="primary", key=f"cv-{entreprise['id']}",
+                 help="≈ 1 min : Claude réécrit les textes, la mise en page est vérifiée, le PDF est produit"):
+        with st.status("Adaptation du CV...", expanded=True) as statut:
+            try:
+                cv_adapte.adapter(cible, progression=st.write)
+                statut.update(label="CV adapté prêt", state="complete")
+                st.rerun()
+            except (ErreurLLM, cv_modele.ErreurModele) as erreur:
+                statut.update(label="Échec", state="error")
+                st.error(str(erreur))
+
+    if not versions:
+        st.caption("Le CV reprendra ton design à l'identique : seuls les textes sont adaptés à l'activité de l'entreprise.")
+        return
+    derniere = versions[0]
+    st.caption(f"Généré le {date_lisible(derniere['date'])}"
+               + (f" · {len(versions)} versions" if len(versions) > 1 else ""))
+    if Path(derniere["chemin_pdf"]).exists():
+        afficher_cv_adapte({"changements": json.loads(derniere["changements"]),
+                            "alertes": json.loads(derniere["alertes"]), "conseil": derniere["conseil"]},
+                           derniere["chemin_pdf"])
+    else:
+        st.warning("Le fichier PDF a été supprimé : regénère-le.")
 
 
 def marquer_envoye(entreprise, email, canal: str, suggestions: list[str]) -> None:

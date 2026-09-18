@@ -316,6 +316,16 @@ Interface : Streamlit (local)
 - **Haiku testé puis écarté** sur la notation : 32 s contre 9 s pour Sonnet, 2 946 jetons de sortie contre 800,
   et notes moins discriminantes (50/100 en technique à une offre de support fonctionnel, contre 15 pour Sonnet)
 
+## Étape 17 — Ergonomie : retrouver ses CV ✅
+
+- Problème signalé : « je ne trouve pas mon CV généré ». Les versions n'étaient visibles qu'en resélectionnant
+  exactement la même cible dans la page CV adapté
+- [x] Volet **« 📁 Tous tes CV générés »** (toutes cibles confondues, avec le nom de la cible et le téléchargement)
+- [x] **Onglet « 📄 CV adapté » dans la fiche entreprise** : pour une candidature spontanée, tout est au même endroit
+  (contacts, email, LinkedIn, CV)
+- [x] Hunter : message clair quand aucune adresse n'est trouvée mais que le **format** est connu (cas des grands
+  groupes, ex. orange-business.com), + bouton **🧩 Déduire** qui applique le format à un dirigeant puis vérifie l'adresse
+
 ## Sources
 - https://api.apprentissage.beta.gouv.fr/fr
 - https://code.claude.com/docs/en/authentication
