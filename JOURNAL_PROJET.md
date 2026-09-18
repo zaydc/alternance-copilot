@@ -304,6 +304,18 @@ Interface : Streamlit (local)
 - Page CV adapté : formulaire repliable (intitulé, entreprise, lien, texte), l'offre enregistrée est
   sélectionnée automatiquement ; refus si le texte fait moins de 100 caractères
 
+## Étape 16 — CV pour candidature spontanée et réduction des coûts ✅
+
+- **Cible unifiée** `assistant.contexte_cible()` : offre collectée, offre collée (`ext-`) ou **entreprise** (`ent-`).
+  La fiche entreprise réutilise la recherche web déjà faite pour l'email (activité, site, sources) : aucun appel en plus.
+- Consignes ajoutées : en candidature spontanée, ne pas inventer d'intitulé de poste ni la stack de l'entreprise
+- **Coût** : paramètre `effort` du SDK (`low` / `medium` / `high`, défaut `high`)
+  - `low` : notation, raccourcissement, extraction du profil, analyse des compétences
+  - `medium` : réécriture du CV, emails, relances
+  - Mesure : CV adapté **3 min 50 → 46 s** ; consommation enregistrée dans `llm_client.DERNIER_USAGE`
+- **Haiku testé puis écarté** sur la notation : 32 s contre 9 s pour Sonnet, 2 946 jetons de sortie contre 800,
+  et notes moins discriminantes (50/100 en technique à une offre de support fonctionnel, contre 15 pour Sonnet)
+
 ## Sources
 - https://api.apprentissage.beta.gouv.fr/fr
 - https://code.claude.com/docs/en/authentication

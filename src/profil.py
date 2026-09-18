@@ -79,7 +79,7 @@ def charger_profil(chemin_cv: Path = CHEMIN_CV) -> tuple[Profil, str]:
 
     texte = lire_cv(chemin_cv)
     hash_cv = empreinte(texte)
-    profil = generer_json(f"Voici le texte du CV :\n\n{texte}", SYSTEME, Profil)
+    profil = generer_json(f"Voici le texte du CV :\n\n{texte}", SYSTEME, Profil, effort="low")
     sauvegarde = {"hash_cv": hash_cv, "profil": profil.model_dump()}
     CHEMIN_PROFIL.write_text(json.dumps(sauvegarde, ensure_ascii=False, indent=2), encoding="utf-8")
     return profil, hash_cv

@@ -12,7 +12,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from src import stockage
-from src.assistant import detail_offre
+from src.assistant import contexte_cible
 from src.llm_client import OUTILS_WEB, generer_json
 from src.profil import charger_profil
 
@@ -40,7 +40,9 @@ Liste les compétences TECHNIQUES (langages, frameworks, outils, méthodes, doma
 ou valorise explicitement et qui n'apparaissent pas dans le profil, même sous un autre nom
 (ex. « JS » = JavaScript ; « API REST » est couvert par FastAPI ou Node.js).
 Ignore les savoir-être, les diplômes et les langues. Ne liste pas ce que le profil couvre déjà.
-Au maximum 8 compétences, les plus importantes d'abord."""
+Au maximum 8 compétences, les plus importantes d'abord.
+S'il s'agit d'une candidature spontanée (fiche d'entreprise sans offre), ne cite que les technologies
+explicitement présentes dans les informations fournies : n'invente pas la stack de l'entreprise."""
 
 SYSTEME_PREUVE = """Tu vérifies qu'un candidat a réellement utilisé une compétence technique, à partir de ce qu'il fournit :
 une description de projet, éventuellement un lien (consulte-le s'il est fourni) ou le contenu d'un fichier.
@@ -72,8 +74,9 @@ def analyser_offre(offre_id: str) -> list[dict]:
         confirmees = [d["nom"] for d in competences_confirmees()]
         prompt = (f"## Profil du candidat\n{profil.model_dump_json(indent=1)}\n"
                   f"Compétences confirmées en plus du CV : {', '.join(confirmees) or 'aucune'}\n\n"
-                  f"## Offre\n{detail_offre(offre_id)}")
-        analyse = [c.model_dump() for c in generer_json(prompt, SYSTEME_ANALYSE, AnalyseOffre).competences_absentes]
+                  f"## Offre ou entreprise visée\n{contexte_cible(offre_id)}")
+        analyse = [c.model_dump()
+                   for c in generer_json(prompt, SYSTEME_ANALYSE, AnalyseOffre, effort="low").competences_absentes]
         with closing(stockage.connecter()) as c:
             stockage.enregistrer_analyse(c, offre_id, hash_cv, analyse)
     deja = declarations()

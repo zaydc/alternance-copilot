@@ -52,7 +52,38 @@ def chercher_offres(mots_cles: str) -> str:
     )
 
 
-PREFIXE_EXTERNE = "ext-"  # offre collée par l'utilisateur plutôt que collectée via l'API
+PREFIXE_EXTERNE = "ext-"        # offre collée par l'utilisateur plutôt que collectée via l'API
+PREFIXE_ENTREPRISE = "ent-"     # candidature spontanée : la cible est une entreprise, sans offre
+
+
+def fiche_entreprise(entreprise_id: str) -> str:
+    """Tout ce que l'application sait d'une entreprise, pour une candidature spontanée."""
+    with closing(stockage.connecter()) as c:
+        entreprise = c.execute("SELECT * FROM entreprises WHERE id = ?", (entreprise_id,)).fetchone()
+        if entreprise is None:
+            return f"Aucune entreprise avec l'id {entreprise_id}."
+        emails = stockage.emails_entreprise(c, entreprise_id)
+        offres = c.execute("SELECT titre, description FROM offres WHERE entreprise LIKE ? AND exclusion IS NULL",
+                           (f"%{entreprise['nom']}%",)).fetchall()
+    texte = (f"Candidature spontanée : aucune offre publiée.\n"
+             f"Entreprise : {entreprise['nom']}\nSecteur : {entreprise['secteur']}\n"
+             f"Effectif : {entreprise['taille']}\nAdresse : {entreprise['adresse']} ({entreprise['distance_km']} km)")
+    if emails:
+        recherche = emails[0]
+        texte += (f"\n\nCe que fait l'entreprise (recherche web) : {recherche['ce_que_fait']}"
+                  f"\nSite : {recherche['site_web'] or '-'} | Page carrières : {recherche['page_carrieres'] or '-'}"
+                  f"\nSources consultées : {', '.join(json.loads(recherche['sources']))}")
+    for offre in offres[:2]:
+        texte += (f"\n\nOffre publiée par cette entreprise : {offre['titre']}\n"
+                  f"{offre['description'][:1500]}")
+    return texte
+
+
+def contexte_cible(cible_id: str) -> str:
+    """Texte décrivant la cible d'une candidature : offre collectée, offre collée ou entreprise."""
+    if cible_id.startswith(PREFIXE_ENTREPRISE):
+        return fiche_entreprise(cible_id.removeprefix(PREFIXE_ENTREPRISE))
+    return detail_offre(cible_id)
 
 
 def detail_offre(offre_id: str) -> str:

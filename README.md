@@ -21,7 +21,7 @@ fou à retrouver qui on a relancé et quand.
 | 🏢 **Candidatures spontanées** | Les entreprises du numérique susceptibles de recruter : qui contacter, un email personnalisé, une note LinkedIn |
 | 📬 **Suivi et relances** | L'état de chaque candidature, et la relance rédigée automatiquement 7 jours après l'envoi |
 | 🎤 **Préparation d'entretien** | Un chatbot qui joue le recruteur de l'entreprise visée, avec un retour après chaque réponse |
-| 📄 **CV adapté** | Mon CV réécrit pour une offre précise (collectée ou collée depuis LinkedIn), dans le même design, exporté en PDF |
+| 📄 **CV adapté** | Mon CV réécrit pour une cible précise — offre collectée, offre collée depuis LinkedIn ou **entreprise visée en candidature spontanée** — dans le même design, exporté en PDF |
 | 👤 **Profil** | Import du CV, profil extrait, signature des emails |
 
 Chaque matin, une tâche planifiée Windows collecte les nouvelles offres. La notation par Claude, elle, ne tourne
@@ -113,6 +113,12 @@ et les poids se règlent dans une seule constante.
 
 **Chaque appel au LLM renvoie du JSON validé.** Je décris la réponse attendue avec Pydantic, j'envoie le schéma
 à Claude, et je revalide la réponse à l'arrivée. Une réponse mal formée est détectée tout de suite.
+
+**L'effort de réflexion est réglé tâche par tâche.** Le SDK expose un paramètre `effort` : je le mets à `low` pour
+les tâches guidées par un schéma (notation, raccourcissement, extraction du CV) et à `medium` pour la réécriture du CV
+et les emails. Résultat mesuré : un CV adapté passe de 3 min 50 à 46 s, sans perte de qualité. J'ai aussi comparé
+Haiku à Sonnet sur la notation : Haiku est plus lent (32 s contre 9 s), produit 3,7 fois plus de jetons en sortie et
+note moins justement, donc je suis resté sur Sonnet.
 
 **Tout est mis en cache dans SQLite.** Une offre déjà notée pour le même CV n'est jamais renvoyée à Claude.
 Les limites de l'abonnement Pro sont partagées avec claude.ai, donc chaque appel compte.

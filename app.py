@@ -244,6 +244,8 @@ def page_entreprises() -> None:
             st.success(f"📬 Candidature envoyée le {date_lisible(envoyee['date_envoi'])} "
                        f"({envoyee['canal']} : {envoyee['destinataire']}) · statut : **{envoyee['statut']}**")
 
+        st.caption("Un CV adapté à cette entreprise se génère dans la page **📄 CV adapté** "
+                   "(elle y apparaît une fois la recherche faite).")
         libelle = "🔁 Relancer la recherche et la rédaction" if precedents else "✨ Trouver les contacts et rédiger"
         if st.button(libelle, type="primary", help="Recherche web + rédaction par Claude (≈ 1 à 2 min, utilise le quota)"):
             with st.spinner("Claude se renseigne sur l'entreprise, relève ses contacts publiés et rédige..."):
@@ -722,6 +724,8 @@ def page_cv() -> None:
     with connexion() as c:
         offres = {f"✂️ {o['titre'][:60]}" + (f" · {o['entreprise']}" if o["entreprise"] else ""): o["id"]
                   for o in stockage.offres_externes(c)}
+        offres |= {f"🏢 {e['nom'][:60]} · candidature spontanée": assistant.PREFIXE_ENTREPRISE + e["id"]
+                   for e in stockage.entreprises_recherchees(c)}
         offres |= {f"{o['titre'][:70]}" + (f" · {o['score']}/100" if o["score"] is not None else ""): o["id"]
                    for o in stockage.offres_actives(c)}
     if not offres:
@@ -745,7 +749,9 @@ def page_cv() -> None:
         confirmer_competences(analyse)
 
     st.subheader("2. Générer le CV")
-    st.caption("Claude ne modifie que les textes : le design, tes coordonnées, tes dates et tes chiffres restent intacts.")
+    st.caption("Claude ne modifie que les textes : le design, tes coordonnées, tes dates et tes chiffres restent intacts."
+               + (" Pour une candidature spontanée, il s'appuie sur la recherche déjà faite sur l'entreprise."
+                  if offre_id.startswith(assistant.PREFIXE_ENTREPRISE) else ""))
     if st.button("✨ Générer le CV adapté", type="primary", help="1 à 4 min : réécriture, contrôle de la mise en page, PDF"):
         with st.status("Adaptation du CV...", expanded=True) as statut:
             try:

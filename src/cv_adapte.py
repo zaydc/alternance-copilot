@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from pypdf import PdfReader
 
 from src import competences, cv_modele, cv_segments, stockage
-from src.assistant import detail_offre
+from src.assistant import contexte_cible
 from src.llm_client import generer_json
 from src.profil import DOSSIER_DATA, charger_profil
 
@@ -60,6 +60,8 @@ Règles absolues :
 - Listes de compétences : place les plus pertinentes pour l'offre en premier. Tu peux remplacer l'élément le moins utile
   par une compétence confirmée pertinente de la même catégorie, en gardant le même nombre d'éléments.
 - Reprends le vocabulaire de l'offre uniquement pour décrire ce que le candidat a réellement fait.
+- Candidature spontanée (fiche d'entreprise, sans offre) : appuie-toi sur l'activité réelle de l'entreprise et son
+  secteur ; n'invente ni intitulé de poste ni mission, et reste sur le métier visé par le candidat.
 - Ne renvoie que ce que tu modifies. Français soigné, sans faute."""
 
 SYSTEME_RACCOURCIR = """Des textes d'un CV à mise en page fixe débordent. Raccourcis chacun jusqu'à la longueur cible
@@ -151,7 +153,7 @@ def adapter(offre_id: str, progression: Callable[[str], None] = print) -> Result
     zones = [{"id": s.id, "section": s.section, "type": s.type, **({"texte": s.texte, "longueur": len(s.texte)} if s.type == "texte"
               else {"elements": s.elements})} for s in liste_segments if s.modifiable]
     prompt = (
-        f"## Offre visée\n{detail_offre(offre_id)}\n\n## Profil du candidat\n{profil.model_dump_json(indent=1)}\n\n"
+        f"## Cible\n{contexte_cible(offre_id)}\n\n## Profil du candidat\n{profil.model_dump_json(indent=1)}\n\n"
         f"## Compétences confirmées (hors CV)\n"
         + ("\n".join(f"- {c['nom']} : {c['resume_cv']}" for c in confirmees) or "aucune")
         + f"\n\n## Compétences NON confirmées (interdites)\n{', '.join(interdites) or 'aucune'}\n\n"
@@ -181,7 +183,9 @@ def adapter(offre_id: str, progression: Callable[[str], None] = print) -> Result
         progression(f"✂️ {len(textes_a_raccourcir)} texte(s) débordent : raccourcissement (essai {tentative + 1})…")
         demande = [{"id": i, "texte": t, "longueur_actuelle": len(t), "longueur_cible": int(len(t) * 0.8),
                     "probleme": problemes[i]} for i, t in textes_a_raccourcir.items()]
-        for modif in generer_json(json.dumps(demande, ensure_ascii=False, indent=1), SYSTEME_RACCOURCIR, Raccourcissement).textes:
+        raccourcis = generer_json(json.dumps(demande, ensure_ascii=False, indent=1), SYSTEME_RACCOURCIR,
+                                  Raccourcissement, effort="low")
+        for modif in raccourcis.textes:
             if modif.id in textes_a_raccourcir and not (_nombres(modif.texte) - nombres_connus) and modif.texte.count("**") % 2 == 0:
                 retenues[modif.id] = (modif.texte.strip(), retenues[modif.id][1])
 

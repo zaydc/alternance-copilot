@@ -36,7 +36,7 @@ def rediger_relance(connexion, candidature) -> int:
             f"Activité de l'entreprise : {email_initial['ce_que_fait']}\n\n"
             f"## Message initial\nObjet : {email_initial['objet']}\n\n{email_initial['corps']}"
         )
-    relance = generer_json(contexte, SYSTEME, Relance)  # aucun outil : tout le contexte est fourni
+    relance = generer_json(contexte, SYSTEME, Relance, effort="low")  # aucun outil : tout le contexte est fourni
     return stockage.inserer(
         connexion,
         "relances",

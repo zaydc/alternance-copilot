@@ -73,7 +73,7 @@ def noter_lot(profil_json: str, offres: list) -> list[NoteOffre]:
         f"## Profil du candidat\n{profil_json}\n\n"
         f"## Offres à noter ({len(offres)})\n\n" + "\n\n".join(map(formater_offre, offres))
     )
-    notes = generer_json(prompt, SYSTEME, NotesLot).notes
+    notes = generer_json(prompt, SYSTEME, NotesLot, effort="low").notes  # notation guidée : peu de réflexion utile
     ids_attendus = {offre["id"] for offre in offres}
     # On ignore un identifiant inventé ; une offre oubliée sera simplement notée au prochain lancement
     return [note for note in notes if note.offre_id in ids_attendus]
